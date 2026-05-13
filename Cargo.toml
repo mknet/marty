@@ -1,0 +1,13 @@
+[package]
+name = "marty"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Great Scott! Rust helpers for CGI—map RFC 3875 to hyper, glue tower services, and hit 88 mph without a flux capacitor. Evolved from mknet/cgi-rs."
+documentation = "https://docs.rs/marty"
+repository = "https://github.com/mknet/marty"
+license = "Apache-2.0"
+keywords = ["cgi", "hyper", "tower", "http", "gateway"]
+categories = ["network-programming", "web-programming::http-server"]
+
+[dependencies]
