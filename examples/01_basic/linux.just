@@ -1,5 +1,6 @@
 # Linux + musl cross-builds for `marty-01-basic` (cargo-zigbuild + Zig).
 # From this directory: `just linux` (x86_64) or `just linux arm` (aarch64).
+# On success, copies `htaccess.basic.in` → `dist.htaccess` (Apache: /basic → cgi-bin/marty-01-basic).
 
 # `just linux` — x86_64-unknown-linux-musl
 default: (_musl "x86_64-unknown-linux-musl")
@@ -69,4 +70,10 @@ _musl triple:
         ;;
     esac
 
+    SRC="$HERE/htaccess.basic.in"
+    HTA="$HERE/dist.htaccess"
+    test -f "$SRC"
+    install -m0644 "$SRC" "$HTA"
+
     echo "linux musl ok: $OUT ($TRIPLE)"
+    echo "wrote $HTA (Rewrite /basic → cgi-bin/marty-01-basic; deploy as .htaccess on Apache)"

@@ -1,0 +1,14 @@
+# Apache: short URL /basic → CGI script cgi-bin/marty-01-basic (same vhost).
+# Copy next to your site root (or merge into existing .htaccess).
+# Requires: mod_rewrite, AllowOverride FileInfo (or All), Options +FollowSymLinks as needed.
+# Template: `just linux` / `just linux arm` copies this file to dist.htaccess in this directory.
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# If the app lives in a subdirectory, set the prefix here, e.g. RewriteBase /myapp/
+#RewriteBase /
+RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]
+</IfModule>
+
+# Alternative: HTTP redirect (browser URL becomes /cgi-bin/marty-01-basic):
+#RedirectMatch permanent ^/basic/?$ /cgi-bin/marty-01-basic

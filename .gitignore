@@ -5,3 +5,8 @@ target/
 my_database.db
 cgi-bin/marty-01-basic
 examples/01_basic/cgi-bin/
+examples/01_basic/.htaccess
+examples/01_basic/dist.htaccess
+examples/01_basic/.DS_Store
+.DS_Store
+cgi-bin/example-01-basic
