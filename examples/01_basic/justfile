@@ -1,7 +1,10 @@
-# From this directory: `just` builds the CGI binary, installs it into ./cgi-bin, starts _http-cgi-server (cwd = here), runs smoke.hurl.
+# From this directory: `just` = smoke; `just linux` / `just linux arm` = musl cross-build (see linux.just).
 # Requires: just, bash, python3 (for cargo metadata), Rust toolchain. Hurl: `just setup` (workspace root).
 
 default: smoke
+
+# Linux + musl cross-builds for this example (`just linux` / `just linux arm`).
+mod linux
 
 # Install Hurl via the workspace root justfile (`cargo install hurl`).
 setup:
@@ -18,7 +21,7 @@ build:
     HERE="{{ justfile_directory() }}"
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$ROOT"
-    cargo build -p example-01-basic --release
+    cargo build -p marty-01-basic --release
 
 # Copy binary into ./cgi-bin (this directory). Uses cargo metadata for custom CARGO_TARGET_DIR.
 install: build
@@ -28,11 +31,11 @@ install: build
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$ROOT"
     T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-    BIN="$T/release/example-01-basic"
+    BIN="$T/release/marty-01-basic"
     test -f "$BIN"
     mkdir -p "$HERE/cgi-bin"
-    cp -f "$BIN" "$HERE/cgi-bin/example-01-basic"
-    chmod +x "$HERE/cgi-bin/example-01-basic"
+    cp -f "$BIN" "$HERE/cgi-bin/marty-01-basic"
+    chmod +x "$HERE/cgi-bin/marty-01-basic"
 
 # Foreground HTTP+CGI server (port 8080). CWD must be this dir so ./cgi-bin resolves. Run `just install` first if needed.
 run-server:
@@ -75,4 +78,4 @@ smoke: setup install
       cat "$LOG" >&2 || true
       exit 1
     fi
-    echo "smoke ok: Hurl passed for GET ${BASE_URL}/cgi-bin/example-01-basic (HTTP 200 + body contains phrase)"
+    echo "smoke ok: Hurl passed for GET ${BASE_URL}/cgi-bin/marty-01-basic (HTTP 200 + body contains phrase)"

@@ -186,15 +186,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "example-01-basic"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "hyper",
- "marty",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -468,6 +459,15 @@ dependencies = [
  "hyper",
  "snafu",
  "tower",
+]
+
+[[package]]
+name = "marty-01-basic"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "hyper",
+ "marty",
 ]
 
 [[package]]
