@@ -1,0 +1,9 @@
+[package]
+name = "_http-cgi-server"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Minimal TCP+CGI harness for Marty workspace examples only (not for production). Crate name matches directory examples/_http-cgi-server."
+
+[dependencies]

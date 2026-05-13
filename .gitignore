@@ -1,1 +1,7 @@
-/target
+debug/
+target/
+**/*.rs.bk
+*.pdb
+my_database.db
+cgi-bin/example-01-basic
+examples/01_basic/cgi-bin/

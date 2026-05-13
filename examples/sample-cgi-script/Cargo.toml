@@ -1,0 +1,15 @@
+[package]
+name = "sample-cgi-script"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+axum = "0.8"
+marty = { path = "../../marty", features = ["tower"] }
+tokio = { version = "1", features = ["full"] }
+tower-sessions = "0.15"
+tower-cookies = "0.11"
+tower-sessions-file-based-store = "*"
+rusqlite = "0.33.0"

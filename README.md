@@ -32,8 +32,11 @@ The [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) / [**mknet/cgi-rs**](htt
 | Theme | Idea |
 |--------|------|
 | **Core** | CGI environment → `hyper::Request` / `hyper::Response` |
-| **Tower** | Use `tower::Service`—e.g. with **Axum**—and “serve” it as a CGI script |
-| **Examples** | Sample scripts and optionally a small HTTP-CGI server to try things out |
+| **Tower / Axum** | Same crate: enable **`marty` feature `tower`** for `serve_cgi` + `marty::tower` (full `Router` / routing stacks as CGI) |
+| **Dev server** | Example-only TCP harness: `examples/_http-cgi-server` (`_http-cgi-server` crate) |
+| **Examples** | `01_basic` — static `CGIResponse`, synchronous `main` (no Tower); `sample-cgi-script` — Axum + `tower` + sessions + SQLite |
+
+This repository is a **Cargo workspace** mirroring [mknet/cgi-rs `develop`](https://github.com/mknet/cgi-rs/tree/develop): the **`marty/`** crate replaces **`cgi-rs`** and, with the **`tower`** feature, integrates the old **`tower-cgi`** behaviour inside `marty::tower` (no separate Tower crate in this tree). For local demos, **`examples/_http-cgi-server/`** (`cargo run -p _http-cgi-server`) is a minimal HTTP+CGI test harness—not production software. The [sample-cgi-script](https://github.com/mknet/cgi-rs/tree/develop/sample-cgi-script) lives at **`examples/sample-cgi-script/`** (`marty` with `features = ["tower"]`). **`examples/01_basic/`** is the smallest demo: default `marty` only, synchronous `main`, writes a fixed body via `CGIResponse::write_response_to_output` (`cargo run -p example-01-basic`). **Smoke test** (build → `cgi-bin/` → `_http-cgi-server` → [Hurl](https://hurl.dev) assertions in `examples/01_basic/smoke.hurl`): install [`just`](https://github.com/casey/just) and **`hurl`**, then from the repo root run `just smoke-01-basic` (needs `python3` for the Cargo target path when copying the binary). Run the larger sample with `cargo run -p sample-cgi-script`.
 
 If you return from the future and suddenly need **Windows**: upstream still listed that as a limitation—check the current README in the repo before you bet the farm on 1955.
 
@@ -41,12 +44,12 @@ If you return from the future and suddenly need **Windows**: upstream still list
 
 ## Tower / Axum: *“I guess you guys aren’t ready for that yet”*
 
-This pattern comes straight from the cgi-rs README ([**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) original; same text in the [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) fork): a **Tower** service (here `tower_cgi`; after a rename, possibly its own crate in the Marty workspace) forwards requests into your Axum app:
+This pattern comes straight from the cgi-rs README ([**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) original; same text in the [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) fork): a **Tower** `Service`—for example an Axum `Router`—is run behind **`marty`’s `serve_cgi`** when the **`tower`** feature is enabled:
 
 ```rust ignore
-// From the cgi-rs README; requires `tower-cgi` + Axum in your workspace.
+// marty = { version = "…", features = ["tower"] }
 use axum::{routing::get, Router};
-use tower_cgi::serve_cgi;
+use marty::serve_cgi;
 
 #[tokio::main]
 async fn main() {
@@ -110,7 +113,7 @@ If `REQUEST_METHOD` is missing, that is the wrong almanac in the suitcase: **dou
 
 ## License
 
-Apache License, Version 2.0 (see `LICENSE-APACHE` in the repository once it is synced with upstream **cgi-rs**: [cbgbt/cgi-rs](https://github.com/cbgbt/cgi-rs) (original) and [mknet/cgi-rs](https://github.com/mknet/cgi-rs) (fork)).
+Apache License, Version 2.0 — see [`LICENSE-APACHE`](LICENSE-APACHE) in this repository (same text as upstream [mknet/cgi-rs](https://github.com/mknet/cgi-rs) / [cbgbt/cgi-rs](https://github.com/cbgbt/cgi-rs)).
 
 ---
 

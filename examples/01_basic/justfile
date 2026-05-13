@@ -1,0 +1,78 @@
+# From this directory: `just` builds the CGI binary, installs it into ./cgi-bin, starts _http-cgi-server (cwd = here), runs smoke.hurl.
+# Requires: just, bash, python3 (for cargo metadata), Rust toolchain. Hurl: `just setup` (workspace root).
+
+default: smoke
+
+# Install Hurl via the workspace root justfile (`cargo install hurl`).
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    just -f "$ROOT/justfile" setup
+
+# Build the minimal CGI example (release), from workspace root.
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$ROOT"
+    cargo build -p example-01-basic --release
+
+# Copy binary into ./cgi-bin (this directory). Uses cargo metadata for custom CARGO_TARGET_DIR.
+install: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$ROOT"
+    T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    BIN="$T/release/example-01-basic"
+    test -f "$BIN"
+    mkdir -p "$HERE/cgi-bin"
+    cp -f "$BIN" "$HERE/cgi-bin/example-01-basic"
+    chmod +x "$HERE/cgi-bin/example-01-basic"
+
+# Foreground HTTP+CGI server (port 8080). CWD must be this dir so ./cgi-bin resolves. Run `just install` first if needed.
+run-server:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$HERE"
+    exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
+
+# Install, start server in background, Hurl assertions, stop server.
+smoke: setup install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    BASE_URL="${MARTY_CGI_BASE_URL:-http://127.0.0.1:8080}"
+    if ! command -v hurl >/dev/null 2>&1; then
+      echo "error: hurl not on PATH after \`just setup\` (https://hurl.dev). Add Cargo bin to PATH, e.g. export PATH=\"\$HOME/.cargo/bin:\$PATH\"" >&2
+      exit 1
+    fi
+    LOG="$(mktemp)"
+    cleanup() {
+      if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+      fi
+      rm -f "$LOG"
+    }
+    trap cleanup EXIT
+    cd "$HERE"
+    cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server >"$LOG" 2>&1 &
+    SERVER_PID=$!
+    if ! hurl \
+      --no-output \
+      --variable "base_url=${BASE_URL}" \
+      --retry 50 \
+      "$HERE/smoke.hurl"; then
+      echo "--- _http-cgi-server log ---" >&2
+      cat "$LOG" >&2 || true
+      exit 1
+    fi
+    echo "smoke ok: Hurl passed for GET ${BASE_URL}/cgi-bin/example-01-basic (HTTP 200 + body contains phrase)"
