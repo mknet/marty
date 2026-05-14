@@ -13,8 +13,8 @@ categories = ["network-programming", "web-programming::http-server"]
 
 [features]
 default = []
-## Optional: run `tower::Service` implementations (e.g. Axum `Router`) as CGI via [`tower::serve_cgi`](crate::tower::serve_cgi).
-tower = ["dep:tower"]
+# Optional: `serve_cgi` + Tower; enables optional `axum` for `multi_mount_cgi_router`.
+tower = ["dep:tower", "dep:axum"]
 
 [dependencies]
 http-body-util = "0.1"
@@ -22,6 +22,7 @@ hyper = "1"
 snafu = "0.9"
 bytes = "1"
 tower = { version = "0.5", default-features = false, features = ["util"], optional = true }
+axum = { version = "0.8", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true

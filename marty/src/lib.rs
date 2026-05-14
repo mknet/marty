@@ -9,7 +9,7 @@
 //! * Does not support Windows.
 //!
 //! ## Tower / Axum (optional)
-//! Enable Cargo feature **`tower`** for `serve_cgi` / `serve_cgi_with_output` and the `marty::tower` module: any [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) over `hyper`—including an Axum [`Router`](https://docs.rs/axum/latest/axum/struct.Router.html)—can run as a CGI binary with full routing.
+//! Enable Cargo feature **`tower`** for `serve_cgi` / `serve_cgi_with_output`, the `marty::tower` module, and **`multi_mount_cgi_router`**: any [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) over `hyper`—including an Axum [`Router`](https://docs.rs/axum/latest/axum/struct.Router.html)—can run as a CGI binary with full routing.
 //!
 //! ## Examples
 //! ### Parsing an HTTP Request
@@ -57,7 +57,12 @@ pub mod response;
 pub mod tower;
 
 #[cfg(feature = "tower")]
-pub use tower::{CgiServiceError, serve_cgi, serve_cgi_with_output};
+pub use tower::{
+    CgiMountFromEnvError, CgiServiceError, cgi_mount_parts_from_script_name,
+    multi_mount_cgi_router, multi_mount_cgi_router_from_env, multi_mount_cgi_router_try_from_env,
+    multi_mount_cgi_router_with_prefix, serve_cgi, serve_cgi_with_output,
+    try_cgi_mount_parts_from_env,
+};
 
 pub use request::CGIRequest;
 pub use response::CGIResponse;
