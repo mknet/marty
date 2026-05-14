@@ -4,9 +4,13 @@ target/
 *.pdb
 my_database.db
 cgi-bin/marty-01-basic
+cgi-bin/marty-02-routing
 examples/01_basic/cgi-bin/
 examples/01_basic/.htaccess
 examples/01_basic/dist.htaccess
+examples/02_routing/cgi-bin/
+examples/02_routing/.htaccess
+examples/02_routing/dist.htaccess
 examples/01_basic/.DS_Store
 .DS_Store
 cgi-bin/example-01-basic

@@ -33,8 +33,9 @@ The [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) / [**mknet/cgi-rs**](htt
 |--------|------|
 | **Core** | CGI environment → `hyper::Request` / `hyper::Response` |
 | **Tower / Axum** | Same crate: enable **`marty` feature `tower`** for `serve_cgi` + `marty::tower` (full `Router` / routing stacks as CGI) |
-| **Dev server** | Example-only TCP harness: `examples/_http-cgi-server` (`_http-cgi-server` crate) |
-| **Examples** | `01_basic` — static `CGIResponse`, synchronous `main` (no Tower); `sample-cgi-script` — Axum + `tower` + sessions + SQLite |
+| **Dev server** | Example-only TCP harness: `examples/_http-cgi-server` — first `/cgi-bin/` segment is the binary, remainder is `PATH_INFO` |
+| **Examples** | `01_basic` — static `CGIResponse`, synchronous `main` (no Tower); `02_routing` — Axum + `serve_cgi`, two routes (with/without path param); `sample-cgi-script` — Axum + sessions + SQLite |
+| **Apache (both examples)** | `examples/apache-combined-vhost.htaccess.in` — short URLs `/basic` → `marty-01-basic`, `/routing` → `marty-02-routing` on one vhost |
 
 This repository is a **Cargo workspace** mirroring [mknet/cgi-rs `develop`](https://github.com/mknet/cgi-rs/tree/develop): the **`marty/`** crate replaces **`cgi-rs`** and, with the **`tower`** feature, integrates the old **`tower-cgi`** behaviour inside `marty::tower` (no separate Tower crate in this tree). For local demos, **`examples/_http-cgi-server/`** (`cargo run -p _http-cgi-server`) is a minimal HTTP+CGI test harness—not production software. The [sample-cgi-script](https://github.com/mknet/cgi-rs/tree/develop/sample-cgi-script) lives at **`examples/sample-cgi-script/`** (`marty` with `features = ["tower"]`). **`examples/01_basic/`** is the smallest demo: default `marty` only, synchronous `main`, writes a fixed body via `CGIResponse::write_response_to_output` (`cargo run -p marty-01-basic`). **Smoke test** (build → `cgi-bin/` → `_http-cgi-server` → [Hurl](https://hurl.dev) assertions in `examples/01_basic/smoke.hurl`): install [`just`](https://github.com/casey/just) and **`hurl`**, then from the repo root run `just smoke-01-basic` (needs `python3` for the Cargo target path when copying the binary). Run the larger sample with `cargo run -p sample-cgi-script`.
 

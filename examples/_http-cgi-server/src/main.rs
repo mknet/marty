@@ -1,4 +1,4 @@
-//! Tiny HTTP front-end that execs `./cgi-bin/*` as CGI scripts.
+//! Tiny HTTP front-end that execs `./cgi-bin/<name>` as CGI scripts, with extra path segments as `PATH_INFO`.
 //! **For local example / test use in the Marty repo only** — not a supported production server.
 //! Lives in `examples/_http-cgi-server` (underscore prefix) next to runnable example crates.
 
@@ -69,15 +69,40 @@ fn handle_cgi_request(
     path: &str,
     headers: HashMap<String, String>,
 ) {
-    let script_name = path.trim_start_matches("/cgi-bin/");
-    let script_path = format!("./cgi-bin/{}", script_name);
+    // First path segment under /cgi-bin/ is the executable; the rest is PATH_INFO (RFC 3875).
+    let after_prefix = path.strip_prefix("/cgi-bin/").unwrap_or("");
+    let mut segments = after_prefix
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>();
+
+    if segments.is_empty() {
+        send_error(stream, "404 Not Found");
+        return;
+    }
+
+    let exe_name = segments.remove(0);
+    let path_info = if segments.is_empty() {
+        String::new()
+    } else {
+        format!("/{}", segments.join("/"))
+    };
+
+    let script_path = format!("./cgi-bin/{}", exe_name);
+    let script_name_uri = format!("/cgi-bin/{}", exe_name);
 
     let mut absolute_script_path = std::env::current_dir().unwrap();
     absolute_script_path.push(&script_path);
-    absolute_script_path = absolute_script_path.canonicalize().unwrap();
+    let absolute_script_path = match absolute_script_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            send_error(stream, "404 Not Found");
+            return;
+        }
+    };
 
     // Check if script exists
-    if !absolute_script_path.exists() {
+    if !absolute_script_path.is_file() {
         send_error(stream, "404 Not Found");
         return;
     }
@@ -110,8 +135,8 @@ fn handle_cgi_request(
     env_vars.insert("SERVER_PORT".to_string(), "8080".to_string());
     env_vars.insert("SERVER_NAME".to_string(), "localhost".to_string());
     env_vars.insert("DOCUMENT_ROOT".to_string(), ".".to_string());
-    env_vars.insert("SCRIPT_NAME".to_string(), path.to_string());
-    env_vars.insert("PATH_INFO".to_string(), "".to_string());
+    env_vars.insert("SCRIPT_NAME".to_string(), script_name_uri);
+    env_vars.insert("PATH_INFO".to_string(), path_info);
     env_vars.insert("PATH_TRANSLATED".to_string(), script_path.clone());
 
     // Add HTTP headers as environment variables
@@ -171,25 +196,32 @@ fn handle_cgi_request(
 }
 
 fn send_cgi_response(mut stream: TcpStream, cgi_output: &str) {
-    // Split the CGI output into headers and body
-    let parts: Vec<&str> = cgi_output.split("\r\n\r\n").collect();
+    // CGI "NPH-style" document: header block (incl. `Status:`), blank line, body.
+    // Marty uses `\n` line endings; normalise for parsing then emit `\r\n` on the wire.
+    let text = cgi_output.replace('\r', "");
+    let mut parts = text.splitn(2, "\n\n");
+    let headers = parts.next();
+    let body = parts.next();
 
-    if parts.len() >= 2 {
-        // CGI output has headers and body
-        let headers = parts[0];
-        let body = parts[1..].join("\r\n\r\n");
+    if let (Some(headers), Some(body)) = (headers, body) {
+        let mut status_line = "HTTP/1.1 200 OK\r\n".to_string();
+        let mut out_headers = String::new();
+        for line in headers.lines() {
+            let key = line.split(':').next().unwrap_or("").trim();
+            if key.eq_ignore_ascii_case("status") {
+                let value = line.splitn(2, ':').nth(1).unwrap_or("200").trim();
+                status_line = format!("HTTP/1.1 {}\r\n", value);
+            } else if !line.is_empty() {
+                out_headers.push_str(line);
+                out_headers.push_str("\r\n");
+            }
+        }
 
-        // Send HTTP status line
-        stream.write_all(b"HTTP/1.1 200 OK\r\n").unwrap();
-
-        // Send CGI headers
-        stream.write_all(headers.as_bytes()).unwrap();
-        stream.write_all(b"\r\n\r\n").unwrap();
-
-        // Send body
+        stream.write_all(status_line.as_bytes()).unwrap();
+        stream.write_all(out_headers.as_bytes()).unwrap();
+        stream.write_all(b"\r\n").unwrap();
         stream.write_all(body.as_bytes()).unwrap();
     } else {
-        // No headers found, treat as raw content
         stream
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n")
             .unwrap();

@@ -1,4 +1,4 @@
-# Linux + musl for `marty-01-basic` (shared zigbuild: workspace root `justfile` → `_linux_musl`).
+# Linux + musl for `marty-02-routing` (shared zigbuild: root `justfile` `_linux_musl`).
 # From this directory: `just linux` (x86_64) or `just linux arm` (aarch64).
 # On success, copies `htaccess.basic.in` → `dist.htaccess`.
 
@@ -12,9 +12,9 @@ _musl triple:
     set -euo pipefail
     HERE="{{ justfile_directory() }}"
     ROOT="$(cd "$HERE/../.." && pwd)"
-    just -f "$ROOT/justfile" _linux_musl marty-01-basic "{{ triple }}"
+    just -f "$ROOT/justfile" _linux_musl marty-02-routing "{{ triple }}"
     SRC="$HERE/htaccess.basic.in"
     HTA="$HERE/dist.htaccess"
     test -f "$SRC"
     install -m0644 "$SRC" "$HTA"
-    echo "wrote $HTA (Rewrite /basic → cgi-bin/marty-01-basic; deploy as .htaccess on Apache)"
+    echo "wrote $HTA (Rewrite /routing → cgi-bin/marty-02-routing; deploy as .htaccess on Apache)"

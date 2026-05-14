@@ -1,13 +1,13 @@
-# Cross-compile `marty-01-basic` for Linux + musl (ELF, typically statically linked libc).
+# Cross-compile workspace members for Linux + musl (ELF, typically statically linked libc).
 #
 # Prerequisites:
 #   rustup target add x86_64-unknown-linux-musl
 #   cargo install cargo-zigbuild
 #   # Zig must be on PATH (cargo-zigbuild invokes it), e.g. macOS: brew install zig
 #
-# Then either:
+# Examples:
 #   cargo zigbuild -p marty-01-basic --release --target x86_64-unknown-linux-musl
-# or the aliases below.
+#   cargo zigbuild -p marty-02-routing --release --target x86_64-unknown-linux-musl
 #
 # aarch64:
 #   rustup target add aarch64-unknown-linux-musl
@@ -20,3 +20,5 @@
 [alias]
 linux-musl-01-basic = "zigbuild -p marty-01-basic --release --target x86_64-unknown-linux-musl"
 linux-musl-01-basic-aarch64 = "zigbuild -p marty-01-basic --release --target aarch64-unknown-linux-musl"
+linux-musl-02-routing = "zigbuild -p marty-02-routing --release --target x86_64-unknown-linux-musl"
+linux-musl-02-routing-aarch64 = "zigbuild -p marty-02-routing --release --target aarch64-unknown-linux-musl"

@@ -1,4 +1,4 @@
-# Apache: short URL /basic → CGI script cgi-bin/marty-01-basic (same vhost).
+# Apache: short URL /routing → CGI cgi-bin/marty-02-routing (same vhost).
 # Copy next to your site root (or merge into existing .htaccess).
 # Both examples on one host: see ../apache-combined-vhost.htaccess.in
 # Requires: mod_rewrite, AllowOverride FileInfo (or All), Options +FollowSymLinks as needed.
@@ -8,8 +8,9 @@
 RewriteEngine On
 # If the app lives in a subdirectory, set the prefix here, e.g. RewriteBase /myapp/
 #RewriteBase /
-RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]
+RewriteRule ^routing/(.+)$ cgi-bin/marty-02-routing/$1 [L,PT]
+RewriteRule ^routing/?$ cgi-bin/marty-02-routing [L,PT]
 </IfModule>
 
-# Alternative: HTTP redirect (browser URL becomes /cgi-bin/marty-01-basic):
-#RedirectMatch permanent ^/basic/?$ /cgi-bin/marty-01-basic
+# Alternative: HTTP redirect (browser URL becomes /cgi-bin/…):
+#RedirectMatch permanent ^/routing/?$ /cgi-bin/marty-02-routing

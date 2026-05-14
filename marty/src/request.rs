@@ -52,24 +52,43 @@ where
     }
 
     pub fn uri(&self) -> Result<String> {
-        // Some CGI implementations (e.g. Apache) set REQUEST_URI, which isn't in the RFC
-        self.var(MetaVariableKind::RequestUri)
-            .map(|uri| Ok(uri.as_str()?.to_string()))
-            .unwrap_or_else(|| {
-                let path_info_str = match MetaVariableKind::PathInfo.try_from_env() {
-                    Ok(meta_variable) => String::from(meta_variable.as_str().unwrap_or("")),
-                    Err(_) => String::from(""),
-                };
+        let script = MetaVariableKind::ScriptName.try_from_env()?;
+        let script_str = script.as_str()?;
+        let path_info = self
+            .var(MetaVariableKind::PathInfo)
+            .map(|v| v.as_str().map(str::to_string).unwrap_or_default())
+            .unwrap_or_default();
+        let query = self
+            .var(MetaVariableKind::QueryString)
+            .map(|v| v.as_str().map(str::to_string).unwrap_or_default())
+            .unwrap_or_default();
 
-                let script_name = MetaVariableKind::ScriptName.try_from_env()?;
-                let query_string = MetaVariableKind::QueryString.try_from_env()?;
-                Ok(format!(
-                    "{}{}?{}",
-                    script_name.as_str()?,
-                    path_info_str,
-                    query_string.as_str()?
-                ))
-            })
+        let mut logical =
+            String::with_capacity(script_str.len() + path_info.len() + query.len() + 1);
+        logical.push_str(script_str);
+        logical.push_str(&path_info);
+        if !query.is_empty() {
+            logical.push('?');
+            logical.push_str(&query);
+        }
+
+        // Apache mod_rewrite often keeps REQUEST_URI as the public path (/routing/…) while
+        // SCRIPT_NAME + PATH_INFO are the RFC 3875 application path under the CGI script. Axum
+        // routes are almost always registered under the latter; prefer it when REQUEST_URI does
+        // not already start with SCRIPT_NAME.
+        match self.var(MetaVariableKind::RequestUri) {
+            Some(uri) => {
+                let req = uri.as_str()?;
+                if req == logical.as_str() {
+                    return Ok(logical);
+                }
+                if !req.starts_with(script_str) {
+                    return Ok(logical);
+                }
+                Ok(req.to_string())
+            }
+            None => Ok(logical),
+        }
     }
 }
 

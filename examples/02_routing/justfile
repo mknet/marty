@@ -4,10 +4,8 @@
 
 default: smoke
 
-# Linux + musl cross-builds for this example (`just linux` / `just linux arm`).
 mod linux
 
-# Install Hurl via the workspace root justfile (`cargo install hurl`).
 setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -15,16 +13,14 @@ setup:
     ROOT="$(cd "$HERE/../.." && pwd)"
     just -f "$ROOT/justfile" setup
 
-# Build the minimal CGI example (release), from workspace root.
 build:
     #!/usr/bin/env bash
     set -euo pipefail
     HERE="{{ justfile_directory() }}"
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$ROOT"
-    cargo build -p marty-01-basic --release
+    cargo build -p marty-02-routing --release
 
-# Copy binary into ./cgi-bin (this directory). Uses cargo metadata for custom CARGO_TARGET_DIR.
 install: build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -32,13 +28,12 @@ install: build
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$ROOT"
     T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-    BIN="$T/release/marty-01-basic"
+    BIN="$T/release/marty-02-routing"
     test -f "$BIN"
     mkdir -p "$HERE/cgi-bin"
-    cp -f "$BIN" "$HERE/cgi-bin/marty-01-basic"
-    chmod +x "$HERE/cgi-bin/marty-01-basic"
+    cp -f "$BIN" "$HERE/cgi-bin/marty-02-routing"
+    chmod +x "$HERE/cgi-bin/marty-02-routing"
 
-# Foreground HTTP+CGI server (port 8080). CWD must be this dir so ./cgi-bin resolves. Run `just install` first if needed.
 run-server:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -47,7 +42,6 @@ run-server:
     cd "$HERE"
     exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
 
-# Install, start server in background, Hurl assertions (see `scripts/cgi-example-smoke.sh`).
 smoke: setup install
     #!/usr/bin/env bash
     set -euo pipefail

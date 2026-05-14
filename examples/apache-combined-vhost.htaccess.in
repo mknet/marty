@@ -1,0 +1,20 @@
+# Apache: both Marty example CGIs on one vhost (same DocumentRoot, binaries in cgi-bin/).
+# Merge into your .htaccess or use as a starting point.
+# Requires: mod_rewrite, AllowOverride FileInfo (or All), Options +FollowSymLinks as needed.
+#
+# Result:
+#   GET /basic              → internal rewrite → cgi-bin/marty-01-basic   (see examples/01_basic)
+#   GET /routing            → internal rewrite → cgi-bin/marty-02-routing (root route)
+#   GET /routing/hello/Doc  → …/cgi-bin/marty-02-routing/hello/Doc (PATH_INFO for Axum)
+#
+# Full CGI URLs still work, e.g. /cgi-bin/marty-02-routing/hello/Doc
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# If the app lives in a subdirectory, set the prefix here, e.g. RewriteBase /myapp/
+#RewriteBase /
+RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]
+# Subpaths first: /routing/hello/… → same CGI with tail as extra path (PATH_INFO).
+RewriteRule ^routing/(.+)$ cgi-bin/marty-02-routing/$1 [L,PT]
+RewriteRule ^routing/?$ cgi-bin/marty-02-routing [L,PT]
+</IfModule>

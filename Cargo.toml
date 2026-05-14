@@ -4,6 +4,7 @@ default-members = ["marty"]
 members = [
     "marty",
     "examples/01_basic",
+    "examples/02_routing",
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
 ]
