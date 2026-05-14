@@ -7,7 +7,7 @@
 #
 # Examples:
 #   cargo zigbuild -p marty-01-basic --release --target x86_64-unknown-linux-musl
-#   cargo zigbuild -p marty-02-routing --release --target x86_64-unknown-linux-musl
+#   cargo zigbuild -p marty-05-sqlite --release --target x86_64-unknown-linux-musl
 #
 # aarch64:
 #   rustup target add aarch64-unknown-linux-musl
@@ -22,3 +22,9 @@ linux-musl-01-basic = "zigbuild -p marty-01-basic --release --target x86_64-unkn
 linux-musl-01-basic-aarch64 = "zigbuild -p marty-01-basic --release --target aarch64-unknown-linux-musl"
 linux-musl-02-routing = "zigbuild -p marty-02-routing --release --target x86_64-unknown-linux-musl"
 linux-musl-02-routing-aarch64 = "zigbuild -p marty-02-routing --release --target aarch64-unknown-linux-musl"
+linux-musl-03-session = "zigbuild -p marty-03-session --release --target x86_64-unknown-linux-musl"
+linux-musl-03-session-aarch64 = "zigbuild -p marty-03-session --release --target aarch64-unknown-linux-musl"
+linux-musl-04-cookies = "zigbuild -p marty-04-cookies --release --target x86_64-unknown-linux-musl"
+linux-musl-04-cookies-aarch64 = "zigbuild -p marty-04-cookies --release --target aarch64-unknown-linux-musl"
+linux-musl-05-sqlite = "zigbuild -p marty-05-sqlite --release --target x86_64-unknown-linux-musl"
+linux-musl-05-sqlite-aarch64 = "zigbuild -p marty-05-sqlite --release --target aarch64-unknown-linux-musl"

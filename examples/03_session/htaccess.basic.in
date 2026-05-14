@@ -1,0 +1,11 @@
+# Apache: short URL /session → cgi-bin/marty-03-session (same vhost).
+# Copy next to your site root (or merge into existing .htaccess).
+# Both examples on one host: see ../apache-combined-vhost.htaccess.in
+# Requires: mod_rewrite, AllowOverride FileInfo (or All), Options +FollowSymLinks as needed.
+# Template: `just linux` / `just linux arm` copies this file to dist.htaccess in this directory.
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+#RewriteBase /
+RewriteRule ^session/?$ cgi-bin/marty-03-session [L,PT]
+</IfModule>

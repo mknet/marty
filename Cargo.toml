@@ -5,6 +5,9 @@ members = [
     "marty",
     "examples/01_basic",
     "examples/02_routing",
+    "examples/03_session",
+    "examples/04_cookies",
+    "examples/05_sqlite",
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
 ]

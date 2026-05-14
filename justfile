@@ -1,5 +1,5 @@
 # Marty workspace — shared CGI smoke (`scripts/cgi-example-smoke.sh`) and musl cross-build (`_linux_musl`).
-# From repo root: `just setup`, `just smoke-01-basic` / `just smoke-02-routing`, or `cd examples/… && just`
+# From repo root: `just setup`, `just smoke-01-basic` … `just smoke-05-sqlite`, or `cd examples/… && just`
 # Requires: just, bash, python3. Hurl: `just setup`.
 
 default:
@@ -78,6 +78,15 @@ smoke-01-basic:
 smoke-02-routing:
     just -f examples/02_routing/justfile smoke
 
+smoke-03-session:
+    just -f examples/03_session/justfile smoke
+
+smoke-04-cookies:
+    just -f examples/04_cookies/justfile smoke
+
+smoke-05-sqlite:
+    just -f examples/05_sqlite/justfile smoke
+
 build-01-basic:
     just -f examples/01_basic/justfile build
 
@@ -90,9 +99,36 @@ build-02-routing:
 install-02-routing:
     just -f examples/02_routing/justfile install
 
+build-03-session:
+    just -f examples/03_session/justfile build
+
+install-03-session:
+    just -f examples/03_session/justfile install
+
+build-04-cookies:
+    just -f examples/04_cookies/justfile build
+
+install-04-cookies:
+    just -f examples/04_cookies/justfile install
+
+build-05-sqlite:
+    just -f examples/05_sqlite/justfile build
+
+install-05-sqlite:
+    just -f examples/05_sqlite/justfile install
+
 # cwd must be the example dir (./cgi-bin). Prefer: `cd examples/01_basic && just run-server`
 run-server:
     cd examples/01_basic && just run-server
 
 run-server-02-routing:
     cd examples/02_routing && just run-server
+
+run-server-03-session:
+    cd examples/03_session && just run-server
+
+run-server-04-cookies:
+    cd examples/04_cookies && just run-server
+
+run-server-05-sqlite:
+    cd examples/05_sqlite && just run-server

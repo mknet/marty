@@ -1,0 +1,54 @@
+# From this directory: `just` = smoke; `just linux` / `just linux arm` = musl cross-build (see linux.just).
+# Smoke uses `scripts/cgi-example-smoke.sh` (workspace root). Hurl: `just setup` (workspace root).
+# Requires: bash, python3 (cargo metadata in `install`).
+
+default: smoke
+
+mod linux
+
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    just -f "$ROOT/justfile" setup
+
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$ROOT"
+    cargo build -p marty-03-session --release
+
+install: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$ROOT"
+    T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    BIN="$T/release/marty-03-session"
+    test -f "$BIN"
+    mkdir -p "$HERE/cgi-bin"
+    cp -f "$BIN" "$HERE/cgi-bin/marty-03-session"
+    chmod +x "$HERE/cgi-bin/marty-03-session"
+
+run-server:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$HERE"
+    exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
+
+smoke: setup install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    if ! command -v hurl >/dev/null 2>&1; then
+      echo "error: hurl not on PATH after \`just setup\` (https://hurl.dev). Add Cargo bin to PATH, e.g. export PATH=\"\$HOME/.cargo/bin:\$PATH\"" >&2
+      exit 1
+    fi
+    bash "$ROOT/scripts/cgi-example-smoke.sh" "$HERE"
