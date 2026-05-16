@@ -1,0 +1,9 @@
+name: marty-bench-simple
+
+services:
+  bench:
+    build:
+      context: ../..
+      dockerfile: benchmarks/simple/docker/Dockerfile
+    ports:
+      - "${BENCH_PORT:-8080}:80"

@@ -1,0 +1,72 @@
+# Benchmark suites. Implementations live under simple/ and complex/.
+
+default:
+    @just --list
+
+# --- simple (webhook) — forwards to benchmarks/simple/justfile ---
+
+simple-smoke:
+    just -f simple/justfile smoke
+
+simple-bench-fair:
+    just -f simple/justfile bench-fair
+
+simple-bench-fair-rebuild:
+    just -f simple/justfile bench-fair-rebuild
+
+simple-bench:
+    just -f simple/justfile bench
+
+simple-bench-docker:
+    just -f simple/justfile bench-docker
+
+simple-docker-smoke:
+    just -f simple/justfile docker-smoke
+
+simple-docker-down:
+    just -f simple/justfile docker-down
+
+# Short aliases (same as before the simple/ split)
+bench-fair:
+    just -f simple/justfile bench-fair
+
+bench-fair-rebuild:
+    just -f simple/justfile bench-fair-rebuild
+
+bench:
+    just -f simple/justfile bench
+
+bench-docker:
+    just -f simple/justfile bench-docker
+
+smoke:
+    just -f simple/justfile smoke
+
+docker-smoke:
+    just -f simple/justfile docker-smoke
+
+docker-down:
+    just -f simple/justfile docker-down
+
+# --- complex (CPU routes) ---
+
+complex-smoke:
+    just -f complex/justfile smoke
+
+complex-bench-fair:
+    just -f complex/justfile bench-fair
+
+complex-bench-fair-rebuild:
+    just -f complex/justfile bench-fair-rebuild
+
+complex-docker-smoke:
+    just -f complex/justfile docker-smoke
+
+complex-docker-down:
+    just -f complex/justfile docker-down
+
+bench-complex-fair:
+    just -f complex/justfile bench-fair
+
+bench-complex-fair-rebuild:
+    just -f complex/justfile bench-fair-rebuild

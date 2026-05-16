@@ -1,0 +1,88 @@
+# Complex CPU benchmark: three GET routes × marty / go / python CGI / php mod_php.
+# Default docker port 8081 (simple uses 8080). From here: `just bench-fair`.
+
+default:
+    @just --list
+
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="$(cd "{{ justfile_directory() }}/../.." && pwd)"
+    just -f "$ROOT/justfile" setup
+
+install-cgi:
+    bash "{{ justfile_directory() }}/scripts/install-cgi-local.sh"
+
+build: install-cgi
+
+run-server:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$HERE"
+    just install-cgi
+    exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
+
+smoke: setup install-cgi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    LOG="$(mktemp)"
+    cleanup() {
+      if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+      fi
+      rm -f "$LOG"
+    }
+    trap cleanup EXIT
+    cd "$HERE"
+    cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server >"$LOG" 2>&1 &
+    SERVER_PID=$!
+    BASE="${BENCH_BASE_URL:-http://127.0.0.1:8080}"
+    hurl --no-output --variable "base_url=${BASE}" --retry 50 \
+      "$HERE/smoke-cgi.hurl" || {
+        echo "--- _http-cgi-server log ---" >&2
+        cat "$LOG" >&2 || true
+        exit 1
+      }
+    echo "smoke ok (complex CGI)"
+
+docker-build:
+    docker compose -p marty-bench-complex -f "{{ justfile_directory() }}/docker-compose.yml" build
+
+docker-up:
+    docker compose -p marty-bench-complex -f "{{ justfile_directory() }}/docker-compose.yml" up -d
+
+docker-down:
+    bash "{{ justfile_directory() }}/scripts/docker-down.sh"
+
+docker-smoke: setup docker-build docker-up
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    BASE="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    hurl --no-output --variable "base_url=${BASE}" --retry 50 "$HERE/smoke.hurl"
+    echo "docker smoke ok (complex: marty, go, python, php)"
+
+ensure-hey:
+    bash "{{ justfile_directory() }}/../simple/scripts/ensure-hey.sh"
+
+bench-fair: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rebuild: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"

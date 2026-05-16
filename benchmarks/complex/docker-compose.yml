@@ -1,0 +1,9 @@
+name: marty-bench-complex
+
+services:
+  bench:
+    build:
+      context: ../..
+      dockerfile: benchmarks/complex/docker/Dockerfile
+    ports:
+      - "${BENCH_PORT:-8081}:80"

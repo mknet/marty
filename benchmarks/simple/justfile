@@ -1,0 +1,107 @@
+# Simple webhook benchmark: marty (Rust CGI) vs Go CGI vs Python stdlib CGI vs PHP mod_php.
+# From benchmarks/simple/: `just smoke` or `just bench-fair`. Or from benchmarks/: `just simple-bench-fair`.
+
+default:
+    @just --list
+
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="$(cd "{{ justfile_directory() }}/../.." && pwd)"
+    just -f "$ROOT/justfile" setup
+
+install-cgi:
+    bash "{{ justfile_directory() }}/scripts/install-cgi-local.sh"
+
+build: install-cgi
+
+run-server:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    cd "$HERE"
+    just install-cgi
+    exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
+
+smoke: setup install-cgi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    export BENCH_SKIP_PHP=1
+    if ! command -v hurl >/dev/null 2>&1; then
+      echo "error: hurl not on PATH" >&2
+      exit 1
+    fi
+    LOG="$(mktemp)"
+    cleanup() {
+      if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+      fi
+      rm -f "$LOG"
+    }
+    trap cleanup EXIT
+    cd "$HERE"
+    cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server >"$LOG" 2>&1 &
+    SERVER_PID=$!
+    BASE="${BENCH_BASE_URL:-http://127.0.0.1:8080}"
+    hurl --no-output --variable "base_url=${BASE}" --retry 50 \
+      "$HERE/smoke-cgi.hurl" || {
+        echo "--- _http-cgi-server log ---" >&2
+        cat "$LOG" >&2 || true
+        exit 1
+      }
+    echo "smoke ok (CGI: marty, go, python)"
+
+docker-build:
+    docker compose -p marty-bench-simple -f "{{ justfile_directory() }}/docker-compose.yml" build
+
+docker-up:
+    docker compose -p marty-bench-simple -f "{{ justfile_directory() }}/docker-compose.yml" up -d
+
+docker-down:
+    docker compose -p marty-bench-simple -f "{{ justfile_directory() }}/docker-compose.yml" down
+
+docker-smoke: setup docker-build docker-up
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    BASE="${BENCH_BASE_URL:-http://127.0.0.1:8080}"
+    hurl --no-output --variable "base_url=${BASE}" --retry 50 "$HERE/smoke.hurl"
+    echo "docker smoke ok (marty, go, python, php mod_php)"
+
+bench:
+    bash "{{ justfile_directory() }}/scripts/run-bench.sh"
+
+bench-drill:
+    bash "{{ justfile_directory() }}/scripts/run-bench-drill.sh"
+
+bench-docker: docker-up
+    BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8080}" \
+      bash "{{ justfile_directory() }}/scripts/run-bench.sh"
+
+bench-drill-docker: docker-up
+    BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8080}" \
+      bash "{{ justfile_directory() }}/scripts/run-bench-drill.sh"
+
+# Fair compare: one Apache container, 2000 POSTs/handler, summary table (no restart between handlers).
+# Rebuild image only when needed: `just bench-fair-rebuild` or BENCH_REBUILD=1 just bench-fair
+ensure-hey:
+    bash "{{ justfile_directory() }}/scripts/ensure-hey.sh"
+
+bench-fair: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rebuild: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"

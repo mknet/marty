@@ -1,0 +1,16 @@
+---
+concurrency: 20
+base: "{{ BENCH_BASE_URL }}"
+iterations: 5000
+rampup: 0
+
+plan:
+  - name: POST webhook (python)
+    request:
+      url: /cgi-bin/python-webhook
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Webhook-Secret: bench-secret
+      body:
+        file: ../../fixtures/webhook-post.json

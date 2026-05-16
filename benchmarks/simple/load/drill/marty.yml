@@ -1,0 +1,17 @@
+---
+# Load: Marty (Rust CGI). Run: drill -b marty.yml --stats
+concurrency: 20
+base: "{{ BENCH_BASE_URL }}"
+iterations: 5000
+rampup: 0
+
+plan:
+  - name: POST webhook (marty)
+    request:
+      url: /cgi-bin/marty-webhook
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Webhook-Secret: bench-secret
+      body:
+        file: ../../fixtures/webhook-post.json
