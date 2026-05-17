@@ -132,3 +132,32 @@ run-server-04-cookies:
 
 run-server-05-sqlite:
     cd examples/05_sqlite && just run-server
+
+# Webhook load benchmarks — benchmarks/simple/ (see benchmarks/README.md)
+bench-webhook:
+    just -f benchmarks/justfile smoke
+
+bench-webhook-docker:
+    just -f benchmarks/justfile docker-smoke
+
+bench-webhook-load:
+    just -f benchmarks/justfile bench-docker
+
+bench-webhook-drill:
+    just -f benchmarks/justfile bench-drill
+
+bench-webhook-drill-docker:
+    just -f benchmarks/justfile bench-drill-docker
+
+# 2000 requests each, Apache docker (mod_php + CGI), results table at end
+bench-webhook-fair:
+    just -f benchmarks/justfile bench-fair
+
+bench-webhook-fair-rebuild:
+    just -f benchmarks/justfile bench-fair-rebuild
+
+bench-complex-fair:
+    just -f benchmarks/justfile bench-complex-fair
+
+bench-complex-fair-rebuild:
+    just -f benchmarks/justfile bench-complex-fair-rebuild

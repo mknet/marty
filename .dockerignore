@@ -1,0 +1,8 @@
+target/
+.git/
+**/.git/
+examples/**/cgi-bin/
+benchmarks/simple/cgi-bin/
+benchmarks/complex/cgi-bin/
+*.db
+.DS_Store

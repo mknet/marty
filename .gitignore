@@ -27,3 +27,5 @@ examples/05_sqlite/dist.htaccess
 examples/01_basic/.DS_Store
 .DS_Store
 cgi-bin/example-01-basic
+benchmarks/simple/cgi-bin/
+benchmarks/complex/cgi-bin/

@@ -10,4 +10,6 @@ members = [
     "examples/05_sqlite",
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
+    "benchmarks/simple/marty-webhook",
+    "benchmarks/complex/marty-complex",
 ]
