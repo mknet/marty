@@ -1,27 +1,31 @@
 //! Shared CPU workloads (same algorithms in go/python/php under benchmarks/complex/).
 
 /// Sieve of Eratosthenes — count primes strictly below `limit`.
-/// Inspired by classic language benchmark suites (e.g. prime counting in HsBenchMarkSuite).
 pub fn prime_count(limit: usize) -> u64 {
     if limit <= 2 {
         return 0;
     }
-    let mut sieve = vec![true; limit];
-    sieve[0] = false;
-    sieve[1] = false;
+
+    // Use an explicit byte array so the hot loop is a simple load/store pattern.
+    let mut composite = vec![0u8; limit];
     let mut count = 0u64;
-    let mut i = 2usize;
-    while i < limit {
-        if sieve[i] {
-            count += 1;
-            let mut j = i.saturating_mul(i);
+
+    for i in 2..limit {
+        if composite[i] != 0 {
+            continue;
+        }
+
+        count += 1;
+
+        if i <= limit / i {
+            let mut j = i * i;
             while j < limit {
-                sieve[j] = false;
-                j = j.saturating_add(i);
+                composite[j] = 1;
+                j += i;
             }
         }
-        i += 1;
     }
+
     count
 }
 
@@ -29,7 +33,6 @@ pub const FIB_SEED: u32 = 42;
 pub const FIB_REPEAT_BASE: u32 = 3_000;
 pub const FIB_REPEAT_SALT_MOD: u32 = 7_000;
 
-/// Iterative Fibonacci.
 pub fn fibonacci(n: u32) -> u64 {
     if n == 0 {
         return 0;
@@ -43,7 +46,6 @@ pub fn fibonacci(n: u32) -> u64 {
     b
 }
 
-/// Salt-dependent CPU load: `repeats = FIB_REPEAT_BASE + (salt % FIB_REPEAT_SALT_MOD)` calls to `fibonacci(FIB_SEED)`.
 pub fn fibonacci_work(salt: u64) -> u64 {
     let repeats = FIB_REPEAT_BASE + (salt as u32 % FIB_REPEAT_SALT_MOD);
     let mut acc = 0u64;
@@ -53,7 +55,6 @@ pub fn fibonacci_work(salt: u64) -> u64 {
     acc
 }
 
-/// Naive dense matrix multiply — checksum prevents dead-code elimination.
 pub fn matrix_checksum(n: usize) -> f64 {
     if n == 0 {
         return 0.0;
@@ -95,5 +96,10 @@ mod tests {
     #[test]
     fn primes_small() {
         assert_eq!(prime_count(10), 4);
+    }
+
+    #[test]
+    fn primes_bench_limit() {
+        assert_eq!(prime_count(400_000), 33_860);
     }
 }

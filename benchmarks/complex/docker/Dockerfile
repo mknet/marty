@@ -2,7 +2,16 @@
 FROM rust:1-bookworm AS rust
 WORKDIR /repo
 COPY . .
-RUN cargo build -p marty-complex-bench --release
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64) target="x86_64-unknown-linux-musl" ;; \
+      aarch64|arm64) target="aarch64-unknown-linux-musl" ;; \
+      *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    rustup target add "$target"; \
+    cargo build -p marty-complex-bench --profile bench --target "$target"; \
+    mkdir -p /out; \
+    cp "target/$target/release/marty-complex-bench" /out/marty-complex
 
 FROM golang:1.22-bookworm AS go
 WORKDIR /src
@@ -22,7 +31,7 @@ RUN a2dissite 000-default.conf \
     && a2ensite 000-bench.conf
 
 COPY benchmarks/complex/php/ /var/www/html/php/
-COPY --from=rust /repo/target/release/marty-complex-bench /usr/lib/cgi-bin/marty-complex
+COPY --from=rust /out/marty-complex /usr/lib/cgi-bin/marty-complex
 COPY --from=go /out/go-complex /usr/lib/cgi-bin/go-complex
 COPY benchmarks/complex/python-complex/complex.py /usr/lib/cgi-bin/python-complex
 

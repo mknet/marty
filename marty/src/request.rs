@@ -3,6 +3,7 @@ use http_body_util::Full;
 use hyper::Request;
 use hyper::body::{Body, Bytes};
 use snafu::ResultExt;
+use std::env;
 use std::io::{Read, stdin};
 
 pub struct CGIRequest<B> {
@@ -121,12 +122,28 @@ where
             request_builder,
             cgi_request,
             ["Content-Length", MetaVariableKind::ContentLength],
+            ["Content-Type", MetaVariableKind::ContentType],
             ["Authorization", MetaVariableKind::HttpAuthorization],
             ["Accept", MetaVariableKind::HttpAccept],
             ["Host", MetaVariableKind::HttpHost],
             ["User-Agent", MetaVariableKind::HttpUserAgent],
             ["Cookie", MetaVariableKind::HttpCookie],
         );
+
+        for (key, value) in env::vars_os() {
+            let Some(key) = key.to_str() else {
+                continue;
+            };
+            let Some(suffix) = key.strip_prefix("HTTP_") else {
+                continue;
+            };
+            if suffix.is_empty() {
+                continue;
+            }
+            let header_name = suffix.to_ascii_lowercase().replace('_', "-");
+            request_builder =
+                request_builder.header(header_name, value.as_os_str().as_encoded_bytes());
+        }
 
         request_builder
             .body(cgi_request.request_body)

@@ -13,3 +13,15 @@ members = [
     "benchmarks/simple/marty-webhook",
     "benchmarks/complex/marty-complex",
 ]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Fat LTO for marty-complex-bench only (`cargo build -p marty-complex-bench --profile bench`).
+[profile.bench]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

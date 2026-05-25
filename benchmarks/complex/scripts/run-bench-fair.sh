@@ -10,6 +10,8 @@ PROBE_URL="${BASE}/cgi-bin/marty-complex/primes/10000?salt=0"
 N="${BENCH_REQUESTS:-2000}"
 C="${BENCH_CONCURRENCY:-10}"
 PAUSE="${BENCH_PAUSE_SEC:-1}"
+RUNS="${BENCH_RUNS:-1}"
+BENCH_TIMING="${BENCH_TIMING:-1}"
 
 # shellcheck source=../../simple/scripts/ensure-hey.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../simple/scripts/ensure-hey.sh"
@@ -47,15 +49,17 @@ start_stack() {
   local port
   port="$(bench_host_port "$BASE")"
   export BENCH_PORT="$port"
+  export BENCH_TIMING
   stop_docker_on_port "$port"
   dc down --remove-orphans 2>/dev/null || true
-  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port})"
+  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port}, BENCH_TIMING=${BENCH_TIMING})"
   dc up -d
 }
 
 ensure_apache() {
   cd "$HERE"
   export BENCH_PORT="$(bench_host_port "$BASE")"
+  export BENCH_TIMING
 
   if [[ "${BENCH_REBUILD:-0}" == "1" ]]; then
     echo ">> docker compose build (BENCH_REBUILD=1)"
@@ -65,8 +69,23 @@ ensure_apache() {
     return
   fi
 
+  local need_recreate=0
+  if [[ -n "$(dc ps -q bench 2>/dev/null)" ]]; then
+    local cur_timing
+    cur_timing="$(dc exec -T bench printenv BENCH_TIMING 2>/dev/null || true)"
+    if [[ "${cur_timing:-}" != "${BENCH_TIMING}" ]]; then
+      need_recreate=1
+    fi
+  fi
+
+  if [[ "$need_recreate" == "1" ]]; then
+    echo ">> BENCH_TIMING changed (${cur_timing:-unset} -> ${BENCH_TIMING}), recreating container"
+    start_stack
+    return
+  fi
+
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]] && curl -sf -o /dev/null -m 5 "$PROBE_URL"; then
-    echo ">> reusing running complex bench container on ${BASE} (probe ok)"
+    echo ">> reusing running complex bench container on ${BASE} (probe ok, BENCH_TIMING=${BENCH_TIMING})"
     return
   fi
 
@@ -109,11 +128,54 @@ run_hey() {
 parse_metric() {
   local haystack="$1"
   local key="$2"
-  echo "$haystack" | grep -F "${key}:" | head -1 | sed -E 's/.*:[[:space:]]*([0-9.eE+-]+).*/\1/'
+  local line
+  line="$(echo "$haystack" | grep -F "${key}:" | head -1 || true)"
+  [[ -z "$line" ]] && return 0
+  echo "$line" | sed -E 's/.*:[[:space:]]*([0-9.eE+-]+).*/\1/'
+}
+
+# hey "Latency distribution:" lines: "  50%% in 0.0420 secs" (template prints %%).
+# Missing percentiles (e.g. 95/99 on short runs) must not fail under pipefail.
+parse_latency_pct() {
+  local haystack="$1"
+  local pct="$2"
+  local line
+  line="$(echo "$haystack" | grep -E "^[[:space:]]*${pct}%+" | grep -F " in " | head -1 || true)"
+  [[ -z "$line" ]] && return 0
+  echo "$line" | sed -E 's/.*in[[:space:]]+([0-9.eE+-]+)[[:space:]]+secs.*/\1/'
 }
 
 secs_to_ms() {
   awk -v s="$1" 'BEGIN { if (s == "" || s == "N/A") print "n/a"; else printf "%.2f", s * 1000 }'
+}
+
+# Median of numeric args (for BENCH_RUNS > 1); prints n/a if empty. Portable (no gawk asort).
+median_ms() {
+  local -a nums=()
+  local v sorted n mid
+  for v in "$@"; do
+    [[ "$v" == "n/a" || -z "$v" ]] && continue
+    nums+=("$v")
+  done
+  n=${#nums[@]}
+  if [[ "$n" -eq 0 ]]; then
+    echo "n/a"
+    return 0
+  fi
+  if [[ "$n" -eq 1 ]]; then
+    printf "%.2f" "${nums[0]}"
+    return 0
+  fi
+  sorted="$(printf '%s\n' "${nums[@]}" | sort -n)"
+  if [[ $((n % 2)) -eq 1 ]]; then
+    mid=$(( (n + 1) / 2 ))
+    printf "%.2f" "$(echo "$sorted" | sed -n "${mid}p")"
+  else
+    local lo hi
+    lo="$(echo "$sorted" | sed -n "$(( n / 2 ))p")"
+    hi="$(echo "$sorted" | sed -n "$(( n / 2 + 1 ))p")"
+    awk -v a="$lo" -v b="$hi" 'BEGIN { printf "%.2f", (a + b) / 2 }'
+  fi
 }
 
 bench_container_id() {
@@ -125,7 +187,9 @@ bench_timing_clear() {
   local cid
   cid="$(bench_container_id)"
   [[ -z "$cid" ]] && return 0
-  # Header line for humans; data lines: impl<TAB>route<TAB>pre_compute_us
+  if [[ "$BENCH_TIMING" != "1" ]]; then
+    return 0
+  fi
   docker exec -e LABEL="$label" "$cid" sh -c 'printf "# %s\n" "$LABEL" > /var/log/bench-timing/requests.log' \
     2>/dev/null || true
 }
@@ -135,7 +199,7 @@ bench_timing_avg_ms() {
   local expect_route="${2:-}"
   local cid
   cid="$(bench_container_id)"
-  if [[ -z "$cid" ]]; then
+  if [[ -z "$cid" ]] || [[ "$BENCH_TIMING" != "1" ]]; then
     echo "n/a"
     return
   fi
@@ -159,7 +223,7 @@ bench_timing_count() {
   local expect_route="${2:-}"
   local cid
   cid="$(bench_container_id)"
-  [[ -z "$cid" ]] && { echo "0"; return; }
+  [[ -z "$cid" ]] || [[ "$BENCH_TIMING" != "1" ]] && { echo "0"; return; }
   docker exec "$cid" awk -v impl="$expect_impl" -v route="$expect_route" '
     $1 ~ /^#/ { next }
     NF >= 3 && $3+0 > 0 {
@@ -171,7 +235,6 @@ bench_timing_count() {
   ' /var/log/bench-timing/requests.log 2>/dev/null || echo "0"
 }
 
-# marty /primes -> marty-complex primes
 bench_timing_key() {
   local label="$1"
   local lang route
@@ -187,69 +250,129 @@ bench_timing_key() {
   esac
 }
 
+run_one_target() {
+  local label="$1"
+  local url="$2"
+  local -a run_avgs=()
+  local -a run_p50s=()
+  local -a run_p95s=()
+  local -a run_p99s=()
+  local -a run_fast=()
+  local -a run_slow=()
+  local -a run_rps=()
+  local -a run_startup=()
+  local run r output avg_s p50_s p95_s p99_s fast_s slow_s rps startup_ms timing_n
+
+  read -r timing_impl timing_route <<< "$(bench_timing_key "$label")"
+
+  for run in $(seq 1 "$RUNS"); do
+    if [[ "$RUNS" -gt 1 ]]; then
+      echo ">> $label (run ${run}/${RUNS}) …"
+    else
+      echo ">> $label …"
+    fi
+    bench_timing_clear "$label"
+    output="$(run_hey "$url")"
+    if ! echo "$output" | grep -q "Requests/sec"; then
+      echo ">> error: hey failed for $label (run ${run}/${RUNS})" >&2
+      echo "$output" >&2
+      return 1
+    fi
+    startup_ms="$(bench_timing_avg_ms "$timing_impl" "$timing_route")"
+    timing_n="$(bench_timing_count "$timing_impl" "$timing_route")"
+    if [[ "$BENCH_TIMING" == "1" ]] && [[ "$timing_n" -lt $((N / 2)) ]]; then
+      echo ">> warning: only ${timing_n}/${N} timing lines in log (rebuild image? BENCH_REBUILD=1)" >&2
+    fi
+    avg_s="$(parse_metric "$output" "Average")"
+    p50_s="$(parse_latency_pct "$output" 50)"
+    p95_s="$(parse_latency_pct "$output" 95)"
+    p99_s="$(parse_latency_pct "$output" 99)"
+    fast_s="$(parse_metric "$output" "Fastest")"
+    slow_s="$(parse_metric "$output" "Slowest")"
+    rps="$(parse_metric "$output" "Requests/sec")"
+
+    run_avgs+=("$(secs_to_ms "$avg_s")")
+    run_p50s+=("$(secs_to_ms "$p50_s")")
+    run_p95s+=("$(secs_to_ms "$p95_s")")
+    run_p99s+=("$(secs_to_ms "$p99_s")")
+    run_fast+=("$(secs_to_ms "$fast_s")")
+    run_slow+=("$(secs_to_ms "$slow_s")")
+    run_rps+=("${rps:-n/a}")
+    run_startup+=("$startup_ms")
+
+    if [[ "${BENCH_VERBOSE:-0}" == "1" ]]; then
+      echo "$output"
+      echo
+    fi
+
+    if [[ "$run" -lt "$RUNS" ]]; then
+      sleep "$PAUSE"
+    fi
+  done
+
+  LABELS+=("$label")
+  AVGS_MS+=("$(median_ms "${run_avgs[@]}")")
+  P50_MS+=("$(median_ms "${run_p50s[@]}")")
+  P95_MS+=("$(median_ms "${run_p95s[@]}")")
+  P99_MS+=("$(median_ms "${run_p99s[@]}")")
+  STARTUP_MS+=("$(median_ms "${run_startup[@]}")")
+  FAST_MS+=("$(median_ms "${run_fast[@]}")")
+  SLOW_MS+=("$(median_ms "${run_slow[@]}")")
+  RPS+=("$(median_ms "${run_rps[@]}")")
+}
+
 ensure_apache
 echo ">> waiting for handlers…"
 for pair in "${TARGETS[@]}"; do
   wait_ready "${pair#*|}"
 done
 
+timing_mode="off (throughput)"
+if [[ "$BENCH_TIMING" == "1" ]]; then
+  timing_mode="on (startup log)"
+fi
+
 echo
 echo "Fair complex benchmark (CPU routes)"
 echo "  Server:     Apache in Docker (CGI + mod_php), port default 8081"
 echo "  Workloads:  primes/${PRIME_LIMIT} (sieve), fibonacci/${FIB_N}, matrix/${MATRIX_SIZE}"
 echo "  Requests:   $N per (handler × route), concurrency $C (hey)"
+echo "  Runs:       $RUNS per target (median when > 1)"
 echo "  Between:    ${PAUSE}s pause, no container restart"
-echo "  Startup:    server log per request (BENCH_TIMING), avg after each hey run"
+echo "  BENCH_TIMING: ${timing_mode}"
 echo
 
 declare -a LABELS=()
 declare -a AVGS_MS=()
+declare -a P50_MS=()
+declare -a P95_MS=()
+declare -a P99_MS=()
 declare -a STARTUP_MS=()
 declare -a FAST_MS=()
 declare -a SLOW_MS=()
 declare -a RPS=()
 
 for pair in "${TARGETS[@]}"; do
-  label="${pair%%|*}"
-  url="${pair#*|}"
-  read -r timing_impl timing_route <<< "$(bench_timing_key "$label")"
-  bench_timing_clear "$label"
-  echo ">> $label …"
-  output="$(run_hey "$url")"
-  startup_ms="$(bench_timing_avg_ms "$timing_impl" "$timing_route")"
-  timing_n="$(bench_timing_count "$timing_impl" "$timing_route")"
-  if [[ "$timing_n" -lt $((N / 2)) ]]; then
-    echo ">> warning: only ${timing_n}/${N} timing lines in log (rebuild image? BENCH_REBUILD=1)" >&2
-  fi
-  avg_s="$(parse_metric "$output" "Average")"
-  fast_s="$(parse_metric "$output" "Fastest")"
-  slow_s="$(parse_metric "$output" "Slowest")"
-  rps="$(parse_metric "$output" "Requests/sec")"
-
-  LABELS+=("$label")
-  AVGS_MS+=("$(secs_to_ms "$avg_s")")
-  STARTUP_MS+=("$startup_ms")
-  FAST_MS+=("$(secs_to_ms "$fast_s")")
-  SLOW_MS+=("$(secs_to_ms "$slow_s")")
-  RPS+=("${rps:-n/a}")
-
-  if [[ "${BENCH_VERBOSE:-0}" == "1" ]]; then
-    echo "$output"
-    echo
-  fi
-
+  run_one_target "${pair%%|*}" "${pair#*|}"
   sleep "$PAUSE"
 done
 
 echo
-echo "════════════════════════════════════════════════════════════════════════"
-printf "%-18s %10s %14s %10s %10s %10s\n" "Handler" "Avg (ms)" "Startup avg" "Fast (ms)" "Slow (ms)" "req/s"
-echo "──────────────────────────────────────────────────────────────────────────────────"
+echo "════════════════════════════════════════════════════════════════════════════════════"
+printf "%-18s %8s %8s %8s %8s %10s %8s %8s %8s\n" \
+  "Handler" "Avg" "P50" "P95" "P99" "Startup" "Fast" "Slow" "req/s"
+echo "────────────────────────────────────────────────────────────────────────────────────"
 for i in "${!LABELS[@]}"; do
-  printf "%-18s %10s %14s %10s %10s %10s\n" \
-    "${LABELS[$i]}" "${AVGS_MS[$i]}" "${STARTUP_MS[$i]}" "${FAST_MS[$i]}" "${SLOW_MS[$i]}" "${RPS[$i]}"
+  printf "%-18s %7s %7s %7s %7s %10s %7s %7s %7s\n" \
+    "${LABELS[$i]}" "${AVGS_MS[$i]}" "${P50_MS[$i]}" "${P95_MS[$i]}" "${P99_MS[$i]}" \
+    "${STARTUP_MS[$i]}" "${FAST_MS[$i]}" "${SLOW_MS[$i]}" "${RPS[$i]}"
 done
-echo "══════════════════════════════════════════════════════════════════════════════════"
+echo "════════════════════════════════════════════════════════════════════════════════════"
 echo
-echo "Avg/req/s = hey. Startup avg = mean in-process µs→ms before compute (log in container; excludes Apache fork)."
-echo "Lower is faster. Rebuild: BENCH_REBUILD=1 just bench-fair-rebuild"
+echo "All latency columns in ms. Avg/P50/P95/P99/Fast/Slow/req/s from hey."
+if [[ "$BENCH_TIMING" == "1" ]]; then
+  echo "Startup = mean in-process µs→ms before compute (container log; excludes Apache fork)."
+else
+  echo "Startup n/a — set BENCH_TIMING=1 for in-process startup column (adds per-request log I/O)."
+fi
+echo "Throughput mode: BENCH_TIMING=0 just bench-fair  |  Rebuild: BENCH_REBUILD=1 just bench-fair-rebuild"

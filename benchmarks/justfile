@@ -59,6 +59,21 @@ complex-bench-fair:
 complex-bench-fair-rebuild:
     just -f complex/justfile bench-fair-rebuild
 
+complex-bench-fair-diagnose:
+    just -f complex/justfile bench-fair-diagnose
+
+complex-bench-fair-throughput:
+    just -f complex/justfile bench-fair-throughput
+
+complex-bench-fair-stable:
+    just -f complex/justfile bench-fair-stable
+
+complex-bench-fair-rebuild-diagnose:
+    just -f complex/justfile bench-fair-rebuild-diagnose
+
+complex-bench-fair-rebuild-throughput:
+    just -f complex/justfile bench-fair-rebuild-throughput
+
 complex-docker-smoke:
     just -f complex/justfile docker-smoke
 

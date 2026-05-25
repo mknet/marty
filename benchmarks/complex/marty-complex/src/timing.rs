@@ -1,10 +1,5 @@
 //! Phase timings for `?profile=1` (stderr + JSON).
-//!
-//! In-process phases use a monotonic clock from `process_start()`.
-//! With `X-Bench-Sent-Us` (Unix µs from the client), also reports wall-clock
-//! deltas from request send → process entry / compute start.
 
-use serde::Serialize;
 use std::io::Write;
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -12,23 +7,14 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 static PROCESS_START: OnceLock<Instant> = OnceLock::new();
 static UNTIL_PROCESS_US: OnceLock<Option<u128>> = OnceLock::new();
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct PhaseProfile {
-    /// Client `X-Bench-Sent-Us` → first line in `main` (fork/exec + network + queue).
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub until_process_us: Option<u128>,
-    /// Client send → just before compute.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub until_compute_us: Option<u128>,
-    /// `main` → handler entered (CGI parse, routing, runtime).
     pub startup_us: u128,
-    /// Handler entered → just before compute.
     pub handler_setup_us: u128,
-    /// Pure compute (primes / fib / matrix).
     pub compute_us: u128,
-    /// After compute → JSON response ready.
     pub post_compute_us: u128,
-    /// Process start → response ready.
     pub total_us: u128,
 }
 
@@ -66,7 +52,6 @@ pub fn elapsed_us() -> u128 {
 
 const BENCH_TIMING_LOG: &str = "/var/log/bench-timing/requests.log";
 
-/// When `BENCH_TIMING=1` (bench Docker), append one line: `impl<TAB>route<TAB>pre_compute_us`.
 pub fn log_bench_pre_compute(route: &str) {
     if std::env::var("BENCH_TIMING").as_deref() != Ok("1") {
         return;

@@ -161,3 +161,18 @@ bench-complex-fair:
 
 bench-complex-fair-rebuild:
     just -f benchmarks/justfile bench-complex-fair-rebuild
+
+bench-complex-fair-diagnose:
+    just -f benchmarks/justfile complex-bench-fair-diagnose
+
+bench-complex-fair-throughput:
+    just -f benchmarks/justfile complex-bench-fair-throughput
+
+bench-complex-fair-stable:
+    just -f benchmarks/justfile complex-bench-fair-stable
+
+bench-complex-fair-rebuild-diagnose:
+    just -f benchmarks/justfile complex-bench-fair-rebuild-diagnose
+
+bench-complex-fair-rebuild-throughput:
+    just -f benchmarks/justfile complex-bench-fair-rebuild-throughput

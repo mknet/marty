@@ -8,7 +8,7 @@ CGI="$HERE/cgi-bin"
 mkdir -p "$CGI"
 
 cd "$ROOT"
-cargo build -p marty-complex-bench --release
+cargo build -p marty-complex-bench --profile bench
 T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 
 cp -f "$T/release/marty-complex-bench" "$CGI/marty-complex"

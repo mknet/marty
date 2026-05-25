@@ -7,3 +7,5 @@ services:
       dockerfile: benchmarks/complex/docker/Dockerfile
     ports:
       - "${BENCH_PORT:-8081}:80"
+    environment:
+      BENCH_TIMING: "${BENCH_TIMING:-1}"

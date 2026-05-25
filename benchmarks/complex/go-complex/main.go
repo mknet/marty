@@ -1,6 +1,4 @@
-// Complex benchmark: three CPU-heavy GET routes via net/http/cgi.
-// Go 1.22+ ServeMux with method-based patterns + path parameters —
-// mirrors Rust's Axum routing in marty-complex.
+// Complex benchmark: three CPU-heavy GET routes via net/http/cgi + chi router.
 package main
 
 import (
@@ -12,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 var (
@@ -43,6 +43,13 @@ type phaseProfile struct {
 	TotalUs        uint64  `json:"total_us"`
 }
 
+type computeResponse struct {
+	Route   string        `json:"route"`
+	Salt    uint64        `json:"salt"`
+	Result  interface{}   `json:"result"`
+	Profile *phaseProfile `json:"profile,omitempty"`
+}
+
 func benchSentUs() (uint64, bool) {
 	s := os.Getenv("HTTP_X_BENCH_SENT_US")
 	if s == "" {
@@ -66,13 +73,6 @@ func logBenchPreCompute(route string) {
 	}
 	_, _ = fmt.Fprintf(f, "go-complex\t%s\t%d\n", route, elapsedUs())
 	_ = f.Close()
-}
-
-type computeResponse struct {
-	Route   string        `json:"route"`
-	Salt    uint64        `json:"salt"`
-	Result  interface{}   `json:"result"`
-	Profile *phaseProfile `json:"profile,omitempty"`
 }
 
 func elapsedUs() uint64 {
@@ -223,75 +223,89 @@ func runTimed(w http.ResponseWriter, route string, salt uint64, profileOn bool, 
 	writeJSON(w, route, salt, result, prof)
 }
 
-// stripCgiPrefix wraps an http.Handler, removing SCRIPT_NAME (or using PATH_INFO)
-// from the request URL so that route patterns are relative to the CGI mount point.
-//
-// This mirrors what Rust's multi_mount_cgi_router_from_env does automatically:
-// it lets you write routes like /primes/{limit} instead of manually stripping
-// /cgi-bin/go-complex from the path.
-func stripCgiPrefix(next http.Handler) http.Handler {
-	scriptName := os.Getenv("SCRIPT_NAME")
+// cgiPath makes PATH_INFO (or SCRIPT_NAME-stripped path) visible to chi as r.URL.Path.
+func cgiPath(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// CGI servers typically set PATH_INFO to the path after SCRIPT_NAME.
 		if pi := os.Getenv("PATH_INFO"); pi != "" {
 			r.URL.Path = pi
-			r.RequestURI = pi
-		} else if scriptName != "" {
-			// Fallback: strip SCRIPT_NAME prefix manually.
-			cleaned := strings.TrimPrefix(r.URL.Path, scriptName)
-			if !strings.HasPrefix(cleaned, "/") {
-				cleaned = "/" + cleaned
+		} else {
+			path := strings.Trim(r.URL.Path, "/")
+			if script := strings.Trim(os.Getenv("SCRIPT_NAME"), "/"); script != "" {
+				if strings.HasPrefix(path, script) {
+					path = strings.TrimPrefix(path, script)
+					path = strings.TrimPrefix(path, "/")
+				}
 			}
-			r.URL.Path = cleaned
-			r.RequestURI = cleaned
+			if path == "" {
+				r.URL.Path = "/"
+			} else {
+				r.URL.Path = "/" + path
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// ---- Route handlers (mirror Rust's Axum route functions) ----
+func pathUint(r *http.Request, name string, fallback int) int {
+	s := chi.URLParam(r, name)
+	if s == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
 
 func routePrimes(w http.ResponseWriter, r *http.Request) {
+	limit := pathUint(r, "limit", defaultPrimeLimit)
 	salt := requestSalt(r)
-	profileOn := wantsProfile(r)
-
-	limitStr := r.PathValue("limit")
-	limit := defaultPrimeLimit
-	if limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil {
-			limit = v
-		}
-	}
 	limit = effectivePrimeLimit(limit, maxPrimeLimit, salt)
-	runTimed(w, "primes", salt, profileOn, func() interface{} { return primeCount(limit) })
+	runTimed(w, "primes", salt, wantsProfile(r), func() interface{} { return primeCount(limit) })
+}
+
+func routePrimesDefault(w http.ResponseWriter, r *http.Request) {
+	routePrimes(w, r)
 }
 
 func routeFibonacci(w http.ResponseWriter, r *http.Request) {
 	salt := requestSalt(r)
-	profileOn := wantsProfile(r)
-	runTimed(w, "fibonacci", salt, profileOn, func() interface{} { return fibonacciWork(salt) })
+	runTimed(w, "fibonacci", salt, wantsProfile(r), func() interface{} { return fibonacciWork(salt) })
+}
+
+func routeFibonacciDefault(w http.ResponseWriter, r *http.Request) {
+	routeFibonacci(w, r)
 }
 
 func routeMatrix(w http.ResponseWriter, r *http.Request) {
+	size := pathUint(r, "size", defaultMatrixSize)
 	salt := requestSalt(r)
-	profileOn := wantsProfile(r)
-
-	sizeStr := r.PathValue("size")
-	size := defaultMatrixSize
-	if sizeStr != "" {
-		if v, err := strconv.Atoi(sizeStr); err == nil {
-			size = v
-		}
-	}
 	size = effectiveMatrixSize(size, maxMatrixSize, salt)
-	runTimed(w, "matrix", salt, profileOn, func() interface{} {
+	runTimed(w, "matrix", salt, wantsProfile(r), func() interface{} {
 		return map[string]interface{}{"size": size, "checksum": matrixChecksum(size)}
 	})
 }
 
-func notFound(w http.ResponseWriter, r *http.Request) {
+func routeMatrixDefault(w http.ResponseWriter, r *http.Request) {
+	routeMatrix(w, r)
+}
+
+func notFound(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.Error(w, "routes: /primes/{limit}, /fibonacci/{n}, /matrix/{size}\n", http.StatusNotFound)
+}
+
+func newRouter() http.Handler {
+	r := chi.NewRouter()
+	r.Get("/primes/{limit}", routePrimes)
+	r.Get("/primes", routePrimesDefault)
+	r.Get("/fibonacci/{n}", routeFibonacci)
+	r.Get("/fibonacci", routeFibonacciDefault)
+	r.Get("/matrix/{size}", routeMatrix)
+	r.Get("/matrix", routeMatrixDefault)
+	r.NotFound(notFound)
+	return cgiPath(r)
 }
 
 func main() {
@@ -299,33 +313,8 @@ func main() {
 		v := sinceSentUs(sent)
 		untilProcessAtMain = &v
 	}
-
-	// ---- Declarative routes, just like Rust's Axum Router ----
-	//
-	// Rust (marty-complex):
-	//   Router::new()
-	//     .route("/primes/{limit}", get(route_primes))
-	//     .route("/primes",         get(route_primes_default))
-	//     .route("/fibonacci/{n}",  get(route_fibonacci))
-	//     ...
-	//     .fallback(not_found);
-	//
-	// Go (this file):
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /primes/{limit}", routePrimes)
-	mux.HandleFunc("GET /primes", routePrimes)
-	mux.HandleFunc("GET /fibonacci/{n}", routeFibonacci)
-	mux.HandleFunc("GET /fibonacci", routeFibonacci)
-	mux.HandleFunc("GET /matrix/{size}", routeMatrix)
-	mux.HandleFunc("GET /matrix", routeMatrix)
-	mux.HandleFunc("/", notFound)
-
-	// stripCgiPrefix removes /cgi-bin/go-complex from the URL path,
-	// like Rust's multi_mount_cgi_router_from_env.
-	handler := stripCgiPrefix(mux)
-
 	logPhase(strings.Contains(os.Getenv("QUERY_STRING"), "profile=1"), "pre_serve_cgi")
-	if err := cgi.Serve(handler); err != nil {
+	if err := cgi.Serve(newRouter()); err != nil {
 		panic(err)
 	}
 }

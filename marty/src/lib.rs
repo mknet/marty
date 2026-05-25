@@ -8,6 +8,11 @@
 //! * Only a subset of the CGI environment variables are hoisted into Requests.
 //! * Does not support Windows.
 //!
+//! ## Sync router
+//! [`Router`](crate::Router) maps CGI requests to plain `fn` handlers with `{param}` paths and [`Router::serve`].
+//! Use [`CgiRequest`](crate::CgiRequest) / [`CgiResponse`](crate::CgiResponse) (no async runtime).
+//! Enable feature **`sync-cgi`** (without `hyper-cgi`) for a smaller sync-only build without hyper.
+//!
 //! ## Tower / Axum (optional)
 //! Enable Cargo feature **`tower`** for `serve_cgi` / `serve_cgi_with_output`, the `marty::tower` module, and **`multi_mount_cgi_router`**: any [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) over `hyper`—including an Axum [`Router`](https://docs.rs/axum/latest/axum/struct.Router.html)—can run as a CGI binary with full routing.
 //!
@@ -49,8 +54,16 @@ use std::ffi::OsString;
 // While this works, it prevents us from supporting Windows.
 use std::os::unix::ffi::OsStrExt;
 
+pub mod cgi;
+pub mod router;
+
+#[cfg(feature = "hyper-cgi")]
 pub mod request;
+#[cfg(feature = "hyper-cgi")]
 pub mod response;
+
+pub use cgi::{CgiRequest, CgiResponse, IntoResponse, relative_path};
+pub use router::Router;
 
 #[cfg(feature = "tower")]
 #[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
@@ -64,7 +77,9 @@ pub use tower::{
     try_cgi_mount_parts_from_env,
 };
 
+#[cfg(feature = "hyper-cgi")]
 pub use request::CGIRequest;
+#[cfg(feature = "hyper-cgi")]
 pub use response::CGIResponse;
 
 /// Contains the value of a CGI "meta-variable".
@@ -221,6 +236,7 @@ pub mod error {
         #[snafu(display("Failed to read request body from stdin: {}", source))]
         ReadRequestBody { source: std::io::Error },
 
+        #[cfg(feature = "hyper-cgi")]
         #[snafu(display("Failed to parse request: {}", source))]
         RequestParse { source: hyper::http::Error },
 

@@ -12,15 +12,18 @@ keywords = ["cgi", "hyper", "tower", "http", "gateway"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [features]
-default = []
-# Optional: `serve_cgi` + Tower; enables optional `axum` for `multi_mount_cgi_router`.
-tower = ["dep:tower", "dep:axum"]
+default = ["hyper-cgi"]
+# Sync [`Router`](crate::Router) / [`CgiRequest`](crate::CgiRequest) without hyper (smaller binaries).
+sync-cgi = []
+# Hyper-based CGIRequest/CGIResponse and optional Tower integration.
+hyper-cgi = ["dep:hyper", "dep:bytes", "dep:http-body-util"]
+tower = ["hyper-cgi", "dep:tower", "dep:axum"]
 
 [dependencies]
-http-body-util = "0.1"
-hyper = "1"
+http-body-util = { version = "0.1", optional = true }
+hyper = { version = "1", optional = true }
 snafu = "0.9"
-bytes = "1"
+bytes = { version = "1", optional = true }
 tower = { version = "0.5", default-features = false, features = ["util"], optional = true }
 axum = { version = "0.8", optional = true }
 

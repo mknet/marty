@@ -70,12 +70,47 @@ docker-smoke: setup docker-build docker-up
 ensure-hey:
     bash "{{ justfile_directory() }}/../simple/scripts/ensure-hey.sh"
 
+# Fair bench (see README). Prefer these over shell lines with trailing `#` comments — some
+# environments pass `#` to just as a recipe name (`error: justfile does not contain recipe '#'`).
+
 bench-fair: ensure-hey
     #!/usr/bin/env bash
     set -euo pipefail
     export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
     export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
     export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING="${BENCH_TIMING:-1}"
+    export BENCH_RUNS="${BENCH_RUNS:-1}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-diagnose: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=1
+    export BENCH_RUNS=1
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-throughput: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=0
+    export BENCH_RUNS=1
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-stable: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING="${BENCH_TIMING:-1}"
+    export BENCH_RUNS=3
     bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
 
 bench-fair-rebuild: ensure-hey
@@ -85,4 +120,28 @@ bench-fair-rebuild: ensure-hey
     export BENCH_REBUILD=1
     export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
     export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING="${BENCH_TIMING:-1}"
+    export BENCH_RUNS="${BENCH_RUNS:-1}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rebuild-diagnose: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=1
+    export BENCH_RUNS=1
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rebuild-throughput: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=0
+    export BENCH_RUNS=1
     bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
