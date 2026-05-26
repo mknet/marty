@@ -11,6 +11,16 @@ pub fn write_compute_u64(
     profile: Option<&PhaseProfile>,
 ) {
     out.clear();
+    append_compute_u64(out, route, salt, result, profile);
+}
+
+pub fn append_compute_u64(
+    out: &mut Vec<u8>,
+    route: &str,
+    salt: u64,
+    result: u64,
+    profile: Option<&PhaseProfile>,
+) {
     out.extend_from_slice(b"{\"route\":\"");
     out.extend_from_slice(route.as_bytes());
     out.extend_from_slice(b"\",\"salt\":");
@@ -32,6 +42,17 @@ pub fn write_compute_matrix(
     profile: Option<&PhaseProfile>,
 ) {
     out.clear();
+    append_compute_matrix(out, route, salt, size, checksum, profile);
+}
+
+pub fn append_compute_matrix(
+    out: &mut Vec<u8>,
+    route: &str,
+    salt: u64,
+    size: usize,
+    checksum: f64,
+    profile: Option<&PhaseProfile>,
+) {
     out.extend_from_slice(b"{\"route\":\"");
     out.extend_from_slice(route.as_bytes());
     out.extend_from_slice(b"\",\"salt\":");
@@ -94,6 +115,14 @@ fn append_usize(out: &mut Vec<u8>, n: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn u64_json_valid() {
+        let mut buf = Vec::new();
+        write_compute_u64(&mut buf, "primes", 0, 3, None);
+        let s = std::str::from_utf8(&buf).unwrap();
+        assert_eq!(s, "{\"route\":\"primes\",\"salt\":0,\"result\":3}");
+    }
 
     #[test]
     fn matrix_json_valid() {

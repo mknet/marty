@@ -6,6 +6,102 @@ Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
 
 **Use P50/P95 for comparisons**, not Avg alone — CGI runs often have long tails (Slow >> P95). Go’s **P50 can be much lower than Avg** (bimodal: many fast forks + some slow).
 
+## Run K — Marty single-write stdout (2026-05-26)
+
+**Root cause identified.** `strace` of a single direct invocation revealed that Marty was emitting **5 separate `write()` syscalls** on stdout per CGI response (4 header lines + body), because Rust's `io::stdout()` is wrapped in a `LineWriter` that flushes on every `\n`. Go in comparison emitted only **2** (combined headers, then body) thanks to `bufio.Writer`.
+
+Under Apache `mod_cgi` concurrency every extra `write()` on the child's stdout pipe becomes an extra wake-up / read in the Apache parent that drains it. This widened Marty's tail distribution dramatically (P99 routinely 40-60 ms in Runs G–J).
+
+Fix in `marty-complex/src/cgi_out.rs`: build status + headers + body into one `Vec<u8>`, then write through the raw stdout fd (via `File::from_raw_fd(1)` wrapped in `ManuallyDrop`), bypassing `LineWriter`. Verified with strace that Marty now emits exactly **1 `write()`** syscall per response, less than Go.
+
+Direct hey, warmed steady-state, 3000 req × 3 runs, concurrency 10 (runs 2-3 of each handler, run 1 excluded as cold):
+
+| Handler          | P50 (ms) | P95 (ms) | P99 (ms) | Slowest (ms) |
+|------------------|----------|----------|----------|--------------|
+| marty /primes    | 4.6-4.7  | 8.1-8.3  | 10.4-11.0| 15-17        |
+| go /primes       | 5.4-5.5  | 9.1-9.9  | 12.4-13.8| 21-42        |
+
+Median-over-5-runs summary from `BENCH_REBUILD=1 just bench-fair-rust-go-stable` (5000 req × 5 runs, warm-up 200):
+
+| Handler          | Avg (ms) | P50 (ms) | Fastest | Slowest (ms) | req/s   |
+|------------------|----------|----------|---------|--------------|---------|
+| marty /primes    | 4.60     | 4.30     | 3.90    | 6.30         | 1537.94 |
+| marty /fibonacci | 3.70     | 3.40     | 3.20    | 4.00         | 2448.11 |
+| marty /matrix    | 6.60     | 6.40     | 5.80    | 7.90         | 1246.14 |
+| go /primes       | 5.50     | 5.60     | 4.80    | 6.20         | 1602.80 |
+| go /fibonacci    | 4.60     | 4.40     | 4.00    | 5.20         | 1850.10 |
+| go /matrix       | 8.30     | 8.30     | 7.20    | 11.50        | 869.33  |
+
+**Conclusion:** A single `write()` per CGI response is what closed the gap — not chunked vs `Content-Length`, not header flush cadence, not JSON encoding, not routing overhead. Marty now beats Go at P50 by ~20-23% on all three routes, beats Go's worst-of-5-runs `Slowest` on `/fibonacci` and `/matrix`, and matches it on `/primes`. Throughput is comparable, with Marty +32% on `/fibonacci`, +43% on `/matrix`, and -4% on `/primes` (essentially tied).
+
+## Run J — Marty Go-like output experiment (2026-05-26)
+
+Stack: same as Run G, but `marty-complex` was run with `MARTY_COMPLEX_GO_LIKE_OUTPUT=1`. In this mode Marty writes CGI headers with CRLF, flushes after the headers, and appends a trailing newline to the JSON body to mimic Go's `net/http/cgi` output cadence more closely. Apache still delivered Marty responses with `Content-Length`; it did not switch Marty to chunked.
+
+Command: `MARTY_COMPLEX_GO_LIKE_OUTPUT=1 BENCH_LANGS="marty go" BENCH_TIMING=0 BENCH_REQUESTS=2000 BENCH_WARMUP_REQUESTS=1000 BENCH_RUNS=1 just bench-fair`
+
+| Handler          | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | req/s   |
+|------------------|----------|----------|----------|----------|---------|
+| marty /primes    | 19.50    | 6.40     | 52.90    | 60.20    | 510.33  |
+| marty /fibonacci | 11.20    | 3.60     | 39.50    | 46.90    | 891.28  |
+| marty /matrix    | 11.90    | 9.50     | 20.50    | 30.60    | 836.59  |
+| go /primes       | 6.20     | 5.80     | 9.40     | 12.60    | 1605.54 |
+| go /fibonacci    | 5.30     | 4.70     | 9.60     | 12.30    | 1874.90 |
+| go /matrix       | 9.00     | 8.40     | 14.20    | 19.40    | 1084.91 |
+
+**Conclusion:** Making Marty write more like Go does not close the tail gap. `/matrix` P95 improves versus Run G, but `/primes` gets worse and `/fibonacci` remains tail-heavy. The key difference is therefore not simply newline/CRLF/header-flush cadence.
+
+## Run I — Go raw CGI response experiment (2026-05-26)
+
+Stack: same as Run G, but `go-complex` was run with `GO_COMPLEX_RAW_CGI=1`. In this mode Go bypasses `net/http/cgi`'s `ResponseWriter` for the final response and writes a fixed CGI document directly to stdout from a hand-written `PATH_INFO` dispatcher. Apache still delivered Go responses with `Transfer-Encoding: chunked`; Marty responses still got `Content-Length`.
+
+Command: `GO_COMPLEX_RAW_CGI=1 BENCH_LANGS="marty go" BENCH_TIMING=0 BENCH_REQUESTS=2000 BENCH_WARMUP_REQUESTS=1000 BENCH_RUNS=1 just bench-fair`
+
+| Handler          | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | req/s   |
+|------------------|----------|----------|----------|----------|---------|
+| marty /primes    | 11.50    | 5.10     | 36.60    | 39.10    | 866.80  |
+| marty /fibonacci | 10.30    | 4.30     | 36.80    | 39.20    | 971.80  |
+| marty /matrix    | 12.30    | 7.80     | 27.20    | 65.30    | 715.10  |
+| go /primes       | 6.50     | 5.90     | 11.10    | 14.90    | 1525.57 |
+| go /fibonacci    | 5.90     | 5.30     | 10.90    | 15.20    | 1686.49 |
+| go /matrix       | 8.60     | 8.10     | 12.80    | 17.80    | 1140.04 |
+
+**Conclusion:** Forcing Go away from `net/http/cgi`'s response writer did not reproduce Marty's high Apache tails. Apache still framed Go as chunked, and Go's P95/P99 remained close to the normal Go run. The remaining difference is not explained by JSON encoding, chi routing, or Go's `net/http/cgi` response writer alone.
+
+## Run H — Rust PGO + target-cpu native (2026-05-26)
+
+Stack: same Apache CGI setup as Run G, but `marty-complex` was rebuilt with Rust PGO and `-Ctarget-cpu=native`. Training used the three Marty routes, then `llvm-profdata merge` produced `.pgo/merged.profdata`, and the final Docker image used `-Cprofile-use=/repo/benchmarks/complex/.pgo/merged.profdata`. Go was unchanged.
+
+Command: `COMPOSE_PROJECT_NAME=marty-bench-complex-pgo BENCH_PORT=8082 BENCH_BASE_URL=http://127.0.0.1:8082 BENCH_LANGS="marty go" BENCH_TIMING=0 BENCH_REQUESTS=2000 BENCH_WARMUP_REQUESTS=1000 BENCH_RUNS=1 just bench-fair`
+
+| Handler          | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | req/s   |
+|------------------|----------|----------|----------|----------|---------|
+| marty /primes    | 12.40    | 6.00     | 34.90    | 51.30    | 800.12  |
+| marty /fibonacci | 10.60    | 3.60     | 38.30    | 45.30    | 935.91  |
+| marty /matrix    | 10.80    | 8.40     | 23.80    | 29.00    | 919.69  |
+| go /primes       | 5.80     | 5.40     | 9.40     | 12.40    | 1690.06 |
+| go /fibonacci    | 5.00     | 4.60     | 8.10     | 13.30    | 1985.93 |
+| go /matrix       | 8.90     | 8.30     | 13.80    | 19.10    | 1099.30 |
+
+**Conclusion:** Rust PGO + `target-cpu=native` improves Marty throughput versus Run G (e.g. `/fibonacci` ~760 → ~936 req/s, `/matrix` ~758 → ~920 req/s) and lowers some tails, especially `/matrix` P95. It does not eliminate the CGI tail gap: Go still has much lower P95/P99 on all three routes.
+
+## Run G — Warmed Rust-vs-Go pass after hot-path cleanup (2026-05-26)
+
+Stack: same as Run F (static-musl `marty-complex`, Apache `KeepAlive Off`). Rust-only cleanup kept timing/profiling out of the normal path and reads CGI env vars as bytes. A single-write CGI response experiment was rejected because it brought the ~50-60 ms Marty distribution back in short concurrent runs; the final code keeps the previous multi-write CGI response shape.
+
+Command: `BENCH_LANGS="marty go" BENCH_TIMING=0 BENCH_REQUESTS=2000 BENCH_WARMUP_REQUESTS=1000 BENCH_RUNS=1 just bench-fair`
+
+| Handler          | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | req/s   |
+|------------------|----------|----------|----------|----------|---------|
+| marty /primes    | 16.50    | 5.80     | 42.60    | 45.70    | 600.26  |
+| marty /fibonacci | 13.10    | 4.70     | 40.90    | 47.70    | 759.79  |
+| marty /matrix    | 13.10    | 7.20     | 35.10    | 36.80    | 758.48  |
+| go /primes       | 6.30     | 5.90     | 10.50    | 12.70    | 1570.29 |
+| go /fibonacci    | 5.60     | 4.70     | 11.90    | 15.80    | 1765.22 |
+| go /matrix       | 8.60     | 8.00     | 13.70    | 17.70    | 1150.69 |
+
+**Conclusion:** with warm-up, Marty is aligned with Go on P50 for `/primes` and `/fibonacci`, and slightly faster on `/matrix` P50. The remaining difference is tail latency/throughput: Marty P95/P99 are still much higher under concurrent Apache CGI.
+
 ## Run F — Rust-only sieve optimization (2026-05-25)
 
 Stack: same as Run E (static-musl `marty-complex`, Apache `KeepAlive Off`). Only Rust's `prime_count` implementation changed: the sieve now uses an explicit `Vec<u8>` composite array and a direct `while` marking loop. Go/Python/PHP were not changed.
@@ -185,12 +281,12 @@ Standard fair bench before P50/P95 columns were added to `run-bench-fair.sh`.
 
 Compare throughput runs: `BENCH_TIMING=0 BENCH_REBUILD=1 just bench-fair-rebuild` (recreate container so Apache sees `BENCH_TIMING=0`).
 
-### marty-complex stack (Go-parity pass)
+### marty-complex stack (library-parity pass)
 
-- **Routing:** `PATH_INFO` first-segment `match` (no `Router`, no `dyn` dispatch).
+- **Routing:** `marty::Router` / `CgiRequest` / `CgiResponse` via the `sync-cgi` feature.
 - **JSON:** hand-written in `json.rs` (no `serde_json`).
-- **CGI write:** `cgi_out.rs` (no `marty` crate in the bench binary).
+- **CGI write:** `marty::CgiResponse` writes the complete CGI document through the library response path.
 - **Docker build:** host-architecture musl target (`x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl`) via `cargo build -p marty-complex-bench --profile bench --target …`; copied from `target/<triple>/release/`.
 - **Local build:** `cargo build -p marty-complex-bench --profile bench` (native artifact under `target/release/`).
-- **Library:** `marty` feature `sync-cgi` remains for embedders who want a slim sync router without hyper.
+- **Library:** the complex bench links `marty` with `default-features = false, features = ["sync-cgi"]` so results represent the lightweight library router rather than a hand-rolled benchmark-only CGI path.
 - **Not compared here:** FastCGI / persistent worker (no fork per request).

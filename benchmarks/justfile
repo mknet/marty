@@ -68,11 +68,32 @@ complex-bench-fair-throughput:
 complex-bench-fair-stable:
     just -f complex/justfile bench-fair-stable
 
+complex-bench-fair-rust-go-stable:
+    just -f complex/justfile bench-fair-rust-go-stable
+
+complex-bench-fair-go-raw-cgi:
+    just -f complex/justfile bench-fair-go-raw-cgi
+
+complex-bench-fair-marty-go-like:
+    just -f complex/justfile bench-fair-marty-go-like
+
 complex-bench-fair-rebuild-diagnose:
     just -f complex/justfile bench-fair-rebuild-diagnose
 
 complex-bench-fair-rebuild-throughput:
     just -f complex/justfile bench-fair-rebuild-throughput
+
+complex-bench-fair-rebuild-native:
+    just -f complex/justfile bench-fair-rebuild-native
+
+complex-bench-fair-pgo:
+    just -f complex/justfile bench-fair-pgo
+
+complex-bench-spawn:
+    just -f complex/justfile bench-spawn
+
+complex-trace-marty-tail:
+    just -f complex/justfile trace-marty-tail
 
 complex-docker-smoke:
     just -f complex/justfile docker-smoke

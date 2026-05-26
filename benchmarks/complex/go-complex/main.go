@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -185,6 +186,7 @@ func writeJSON(w http.ResponseWriter, route string, salt uint64, result interfac
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
+
 	_ = json.NewEncoder(w).Encode(computeResponse{Route: route, Salt: salt, Result: result, Profile: profile})
 }
 
@@ -308,7 +310,100 @@ func newRouter() http.Handler {
 	return cgiPath(r)
 }
 
+func parseRawSalt(query string) (uint64, bool) {
+	for _, pair := range strings.Split(query, "&") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok || k != "salt" {
+			continue
+		}
+		parsed, err := strconv.ParseUint(v, 10, 64)
+		return parsed, err == nil
+	}
+	return 0, false
+}
+
+func rawRequestSalt() uint64 {
+	if salt, ok := parseRawSalt(os.Getenv("QUERY_STRING")); ok {
+		return salt
+	}
+	return uint64(time.Now().UnixNano())
+}
+
+func rawRouteAndArg() (string, string) {
+	path := strings.TrimSpace(os.Getenv("PATH_INFO"))
+	path = strings.TrimPrefix(path, "/")
+	route, arg, ok := strings.Cut(path, "/")
+	if !ok {
+		return route, ""
+	}
+	return route, arg
+}
+
+func rawPathInt(arg string, fallback int) int {
+	if arg == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(arg)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+func writeRawJSON(route string, salt uint64, result interface{}) error {
+	body, err := json.Marshal(computeResponse{Route: route, Salt: salt, Result: result})
+	if err != nil {
+		return err
+	}
+	var out bytes.Buffer
+	out.WriteString("Status: 200 OK\n")
+	out.WriteString("Cache-Control: no-store, no-cache, must-revalidate\n")
+	out.WriteString("Pragma: no-cache\n")
+	out.WriteString("Content-Type: application/json\n\n")
+	out.Write(body)
+	_, err = os.Stdout.Write(out.Bytes())
+	return err
+}
+
+func writeRawStatus(status int, reason string, body string) error {
+	_, _ = fmt.Fprintf(os.Stdout, "Status: %d %s\n", status, reason)
+	_, _ = os.Stdout.Write([]byte("Cache-Control: no-store\n\n"))
+	_, err := os.Stdout.Write([]byte(body))
+	return err
+}
+
+func serveRawCGI() error {
+	if os.Getenv("REQUEST_METHOD") != "GET" {
+		return writeRawStatus(http.StatusMethodNotAllowed, "Method Not Allowed", "Method not allowed\n")
+	}
+
+	route, arg := rawRouteAndArg()
+	salt := rawRequestSalt()
+	switch route {
+	case "primes":
+		limit := rawPathInt(arg, defaultPrimeLimit)
+		limit = effectivePrimeLimit(limit, maxPrimeLimit, salt)
+		return writeRawJSON("primes", salt, primeCount(limit))
+	case "fibonacci":
+		return writeRawJSON("fibonacci", salt, fibonacciWork(salt))
+	case "matrix":
+		size := rawPathInt(arg, defaultMatrixSize)
+		size = effectiveMatrixSize(size, maxMatrixSize, salt)
+		return writeRawJSON("matrix", salt, map[string]interface{}{"size": size, "checksum": matrixChecksum(size)})
+	default:
+		return writeRawStatus(http.StatusNotFound, "Not Found", "routes: /primes/{limit}, /fibonacci/{n}, /matrix/{size}\n")
+	}
+}
+
 func main() {
+	if os.Getenv("GO_COMPLEX_RAW_CGI") == "1" {
+		if err := serveRawCGI(); err != nil {
+			fmt.Fprintf(os.Stderr, "raw CGI error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if sent, ok := benchSentUs(); ok {
 		v := sinceSentUs(sent)
 		untilProcessAtMain = &v

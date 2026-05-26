@@ -1,5 +1,6 @@
 //! Phase timings for `?profile=1` (stderr + JSON).
 
+use std::ffi::OsStr;
 use std::io::Write;
 use std::sync::OnceLock;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -28,6 +29,10 @@ pub fn since_sent_us(sent_us: u64) -> u128 {
     wall_now_us().saturating_sub(sent_us as u128)
 }
 
+pub fn bench_timing_enabled() -> bool {
+    std::env::var_os("BENCH_TIMING").as_deref() == Some(OsStr::new("1"))
+}
+
 fn wall_now_us() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -35,10 +40,12 @@ fn wall_now_us() -> u128 {
         .as_micros()
 }
 
-pub fn process_start() {
+pub fn process_start(capture_until_process: bool) {
     let now = Instant::now();
     let _ = PROCESS_START.set(now);
-    let until = bench_sent_us().map(since_sent_us);
+    let until = capture_until_process
+        .then(|| bench_sent_us().map(since_sent_us))
+        .flatten();
     let _ = UNTIL_PROCESS_US.set(until);
 }
 
@@ -52,8 +59,8 @@ pub fn elapsed_us() -> u128 {
 
 const BENCH_TIMING_LOG: &str = "/var/log/bench-timing/requests.log";
 
-pub fn log_bench_pre_compute(route: &str) {
-    if std::env::var("BENCH_TIMING").as_deref() != Ok("1") {
+pub fn log_bench_pre_compute(enabled: bool, route: &str) {
+    if !enabled {
         return;
     }
     use std::fs::OpenOptions;

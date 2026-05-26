@@ -29,3 +29,6 @@ examples/01_basic/.DS_Store
 cgi-bin/example-01-basic
 benchmarks/simple/cgi-bin/
 benchmarks/complex/cgi-bin/
+benchmarks/complex/.pgo/
+benchmarks/complex/.trace/
+benchmarks/complex/.spawn-bin/

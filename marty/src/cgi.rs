@@ -8,6 +8,8 @@ use snafu::ResultExt;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::{Read, Write, stdin};
+use std::mem::ManuallyDrop;
+use std::os::fd::FromRawFd;
 
 #[cfg(feature = "hyper-cgi")]
 use bytes::Bytes;
@@ -180,6 +182,22 @@ impl CgiResponse {
         }
     }
 
+    /// `200` JSON body with standard no-cache headers, taking ownership of an
+    /// already-built byte buffer.
+    pub fn json_no_cache_bytes(body: Vec<u8>) -> Self {
+        Self {
+            #[cfg(feature = "hyper-cgi")]
+            headers: HeaderMap::new(),
+            status: "200".into(),
+            reason: Some("OK".into()),
+            #[cfg(feature = "hyper-cgi")]
+            body: Bytes::from(body),
+            #[cfg(not(feature = "hyper-cgi"))]
+            body,
+            json_no_cache: true,
+        }
+    }
+
     #[cfg(feature = "hyper-cgi")]
     pub fn with_header(mut self, name: hyper::header::HeaderName, value: HeaderValue) -> Self {
         self.json_no_cache = false;
@@ -189,38 +207,110 @@ impl CgiResponse {
 
     /// Write this response as a CGI "document" to `output` (typically stdout).
     pub fn write_response_to_output(self, mut output: impl Write) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        output
+            .write_all(&bytes)
+            .context(error::WriteResponseSnafu)?;
+        Ok(())
+    }
+
+    /// Write this response as two phases where possible: headers first, body
+    /// second.
+    ///
+    /// This exists for diagnostics and deployment tuning when a CGI server or
+    /// TCP stack behaves differently for single-write vs split header/body
+    /// responses. Normal applications should prefer [`Self::write_response_to_stdout`]
+    /// or [`Self::write_response_to_output`].
+    pub fn write_response_to_output_split(self, mut output: impl Write) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        write_split(&bytes, &mut output)
+    }
+
+    /// Write this response to process stdout.
+    ///
+    /// This bypasses [`std::io::stdout`]'s `LineWriter`, which can otherwise
+    /// flush once per CGI header newline. Building the full CGI document and
+    /// writing it directly to fd 1 preserves the router API while keeping the
+    /// stdout behavior suitable for small CGI responses under Apache `mod_cgi`.
+    pub fn write_response_to_stdout(self) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        write_stdout_raw(&bytes)
+    }
+
+    /// Write this response to stdout as split header/body phases where possible.
+    ///
+    /// See [`Self::write_response_to_output_split`] for why this mode exists.
+    pub fn write_response_to_stdout_split(self) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        if let Some(split_at) = header_body_split(&bytes) {
+            write_stdout_raw(&bytes[..split_at])?;
+            write_stdout_raw(&bytes[split_at..])
+        } else {
+            write_stdout_raw(&bytes)
+        }
+    }
+
+    fn into_cgi_bytes(self) -> Result<Vec<u8>> {
         #[cfg(feature = "hyper-cgi")]
         let headers_empty = self.headers.is_empty();
         #[cfg(not(feature = "hyper-cgi"))]
         let headers_empty = true;
 
+        let body: &[u8] = self.body.as_ref();
         if self.json_no_cache && self.status == "200" && headers_empty {
-            output
-                .write_all(STATUS_200_OK)
-                .and_then(|_| output.write_all(JSON_NO_CACHE_HEADERS))
-                .and_then(|_| output.write_all(self.body.as_ref()))
-                .context(error::WriteResponseSnafu)?;
-            return Ok(());
+            let mut out =
+                Vec::with_capacity(STATUS_200_OK.len() + JSON_NO_CACHE_HEADERS.len() + body.len());
+            out.extend_from_slice(STATUS_200_OK);
+            out.extend_from_slice(JSON_NO_CACHE_HEADERS);
+            out.extend_from_slice(body);
+            return Ok(out);
         }
 
+        let mut out = Vec::with_capacity(64 + body.len());
         if let Some(reason) = &self.reason {
-            writeln!(output, "Status: {} {}", self.status, reason)
+            writeln!(&mut out, "Status: {} {}", self.status, reason)
                 .context(error::WriteResponseSnafu)?;
         } else {
-            writeln!(output, "Status: {}", self.status).context(error::WriteResponseSnafu)?;
+            writeln!(&mut out, "Status: {}", self.status).context(error::WriteResponseSnafu)?;
         }
 
         #[cfg(feature = "hyper-cgi")]
         for (key, value) in self.headers.iter() {
-            writeln!(output, "{}: {}", key, value.to_str().unwrap_or(""))
+            writeln!(&mut out, "{}: {}", key, value.to_str().unwrap_or(""))
                 .context(error::WriteResponseSnafu)?;
         }
-        output.write_all(b"\n").context(error::WriteResponseSnafu)?;
-        output
-            .write_all(self.body.as_ref())
-            .context(error::WriteResponseSnafu)?;
-        Ok(())
+        out.write_all(b"\n").context(error::WriteResponseSnafu)?;
+        out.write_all(body).context(error::WriteResponseSnafu)?;
+        Ok(out)
     }
+}
+
+fn write_stdout_raw(buf: &[u8]) -> Result<()> {
+    // SAFETY: fd 1 is the process stdout supplied by the CGI server. Wrapping
+    // it in `ManuallyDrop<File>` prevents closing stdout when this function
+    // returns; the wrapper exists only to use `Write::write_all`.
+    let stdout = unsafe { std::fs::File::from_raw_fd(1) };
+    let mut stdout = ManuallyDrop::new(stdout);
+    stdout.write_all(buf).context(error::WriteResponseSnafu)
+}
+
+fn write_split(bytes: &[u8], output: &mut impl Write) -> Result<()> {
+    if let Some(split_at) = header_body_split(bytes) {
+        output
+            .write_all(&bytes[..split_at])
+            .and_then(|_| output.write_all(&bytes[split_at..]))
+            .context(error::WriteResponseSnafu)?;
+    } else {
+        output.write_all(bytes).context(error::WriteResponseSnafu)?;
+    }
+    Ok(())
+}
+
+fn header_body_split(bytes: &[u8]) -> Option<usize> {
+    bytes
+        .windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|idx| idx + 2)
 }
 
 /// Relative path for routing: prefer `PATH_INFO`, else strip `SCRIPT_NAME` from `uri`.
@@ -305,5 +395,63 @@ impl<const N: usize> IntoResponse for (u16, [(&'static str, HeaderValue); N], &'
             }
         }
         resp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct CountingWrite {
+        writes: usize,
+        bytes: Vec<u8>,
+    }
+
+    impl Write for CountingWrite {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.writes += 1;
+            self.bytes.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn json_no_cache_writes_one_buffer() {
+        let mut out = CountingWrite {
+            writes: 0,
+            bytes: Vec::new(),
+        };
+
+        CgiResponse::json_no_cache_bytes(b"{}".to_vec())
+            .write_response_to_output(&mut out)
+            .unwrap();
+
+        assert_eq!(out.writes, 1);
+        assert_eq!(
+            out.bytes,
+            b"Status: 200 OK\nCache-Control: no-store, no-cache, must-revalidate\nPragma: no-cache\nContent-Type: application/json\n\n{}"
+        );
+    }
+
+    #[test]
+    fn json_no_cache_can_split_header_and_body() {
+        let mut out = CountingWrite {
+            writes: 0,
+            bytes: Vec::new(),
+        };
+
+        CgiResponse::json_no_cache_bytes(b"{}".to_vec())
+            .write_response_to_output_split(&mut out)
+            .unwrap();
+
+        assert_eq!(out.writes, 2);
+        assert_eq!(
+            out.bytes,
+            b"Status: 200 OK\nCache-Control: no-store, no-cache, must-revalidate\nPragma: no-cache\nContent-Type: application/json\n\n{}"
+        );
     }
 }

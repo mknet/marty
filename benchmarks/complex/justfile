@@ -110,7 +110,34 @@ bench-fair-stable: ensure-hey
     export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
     export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
     export BENCH_TIMING="${BENCH_TIMING:-1}"
-    export BENCH_RUNS=3
+    export BENCH_RUNS="${BENCH_RUNS:-3}"
+    export BENCH_WARMUP_REQUESTS="${BENCH_WARMUP_REQUESTS:-0}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rust-go-stable: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_LANGS="marty go"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-5000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING="${BENCH_TIMING:-0}"
+    export BENCH_RUNS="${BENCH_RUNS:-5}"
+    export BENCH_WARMUP_REQUESTS="${BENCH_WARMUP_REQUESTS:-200}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-go-raw-cgi: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export BENCH_LANGS="marty go"
+    export GO_COMPLEX_RAW_CGI=1
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=0
+    export BENCH_RUNS="${BENCH_RUNS:-1}"
+    export BENCH_WARMUP_REQUESTS="${BENCH_WARMUP_REQUESTS:-1000}"
     bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
 
 bench-fair-rebuild: ensure-hey
@@ -145,3 +172,39 @@ bench-fair-rebuild-throughput: ensure-hey
     export BENCH_TIMING=0
     export BENCH_RUNS=1
     bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-rebuild-native: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export BENCH_REBUILD=1
+    export MARTY_TARGET_CPU="${MARTY_TARGET_CPU:-native}"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=0
+    export BENCH_RUNS=1
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+bench-fair-pgo: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    bash "{{ justfile_directory() }}/scripts/build-marty-pgo.sh"
+
+bench-spawn:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    bash "{{ justfile_directory() }}/scripts/run-spawn-bench.sh"
+
+trace-marty-tail: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    bash "{{ justfile_directory() }}/scripts/trace-marty-tail.sh"
+
+diagnose-apache-cgi-parallel: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    bash "{{ justfile_directory() }}/scripts/diagnose-apache-cgi-parallel.sh"
