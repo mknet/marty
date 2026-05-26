@@ -4,5 +4,8 @@ target/
 examples/**/cgi-bin/
 benchmarks/simple/cgi-bin/
 benchmarks/complex/cgi-bin/
+benchmarks/complex/.pgo/raw/
+benchmarks/complex/.trace/
+benchmarks/complex/.spawn-bin/
 *.db
 .DS_Store

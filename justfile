@@ -171,8 +171,29 @@ bench-complex-fair-throughput:
 bench-complex-fair-stable:
     just -f benchmarks/justfile complex-bench-fair-stable
 
+bench-complex-fair-rust-go-stable:
+    just -f benchmarks/justfile complex-bench-fair-rust-go-stable
+
+bench-complex-fair-go-raw-cgi:
+    just -f benchmarks/justfile complex-bench-fair-go-raw-cgi
+
+bench-complex-fair-marty-go-like:
+    just -f benchmarks/justfile complex-bench-fair-marty-go-like
+
 bench-complex-fair-rebuild-diagnose:
     just -f benchmarks/justfile complex-bench-fair-rebuild-diagnose
 
 bench-complex-fair-rebuild-throughput:
     just -f benchmarks/justfile complex-bench-fair-rebuild-throughput
+
+bench-complex-fair-rebuild-native:
+    just -f benchmarks/justfile complex-bench-fair-rebuild-native
+
+bench-complex-fair-pgo:
+    just -f benchmarks/justfile complex-bench-fair-pgo
+
+bench-complex-spawn:
+    just -f benchmarks/justfile complex-bench-spawn
+
+trace-complex-marty-tail:
+    just -f benchmarks/justfile complex-trace-marty-tail

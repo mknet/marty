@@ -130,6 +130,15 @@ impl Router {
     /// 5. Writes the CGI response to stdout
     pub fn serve(&self) -> Result<()> {
         let req = CgiRequest::from_env()?;
+        let resp = self.handle_request(req);
+        resp.write_response_to_stdout()
+    }
+
+    /// Match an already parsed CGI request and return a response.
+    ///
+    /// This is useful for callers that need to inspect request metadata before
+    /// routing, while still using the library router and response machinery.
+    pub fn handle_request(&self, req: CgiRequest) -> CgiResponse {
         let path = relative_path(&req);
 
         // Try to match a route
@@ -141,19 +150,17 @@ impl Router {
                 let mut req = req;
                 req.path_params = params;
                 let resp = (route.handler)(&req);
-                return resp.write_response_to_output(std::io::stdout());
+                return resp;
             }
         }
 
         // Try fallback
         if let Some(fallback) = &self.fallback {
-            let resp = fallback(&req);
-            return resp.write_response_to_output(std::io::stdout());
+            return fallback(&req);
         }
 
         // Default 404
-        let resp = CgiResponse::new(404, "Not found\n");
-        resp.write_response_to_output(std::io::stdout())
+        CgiResponse::new(404, "Not found\n")
     }
 }
 

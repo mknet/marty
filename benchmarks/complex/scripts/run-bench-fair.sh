@@ -12,6 +12,10 @@ C="${BENCH_CONCURRENCY:-10}"
 PAUSE="${BENCH_PAUSE_SEC:-1}"
 RUNS="${BENCH_RUNS:-1}"
 BENCH_TIMING="${BENCH_TIMING:-1}"
+WARMUP_N="${BENCH_WARMUP_REQUESTS:-0}"
+BENCH_LANGS="${BENCH_LANGS:-marty go python php}"
+MARTY_COMPLEX_SPLIT_RESPONSE="${MARTY_COMPLEX_SPLIT_RESPONSE:-0}"
+GO_COMPLEX_RAW_CGI="${GO_COMPLEX_RAW_CGI:-0}"
 
 # shellcheck source=../../simple/scripts/ensure-hey.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../simple/scripts/ensure-hey.sh"
@@ -50,9 +54,11 @@ start_stack() {
   port="$(bench_host_port "$BASE")"
   export BENCH_PORT="$port"
   export BENCH_TIMING
+  export MARTY_COMPLEX_SPLIT_RESPONSE
+  export GO_COMPLEX_RAW_CGI
   stop_docker_on_port "$port"
   dc down --remove-orphans 2>/dev/null || true
-  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port}, BENCH_TIMING=${BENCH_TIMING})"
+  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port}, BENCH_TIMING=${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE=${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
   dc up -d
 }
 
@@ -60,6 +66,8 @@ ensure_apache() {
   cd "$HERE"
   export BENCH_PORT="$(bench_host_port "$BASE")"
   export BENCH_TIMING
+  export MARTY_COMPLEX_SPLIT_RESPONSE
+  export GO_COMPLEX_RAW_CGI
 
   if [[ "${BENCH_REBUILD:-0}" == "1" ]]; then
     echo ">> docker compose build (BENCH_REBUILD=1)"
@@ -72,20 +80,24 @@ ensure_apache() {
   local need_recreate=0
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]]; then
     local cur_timing
+    local cur_marty_split
+    local cur_go_raw_cgi
     cur_timing="$(dc exec -T bench printenv BENCH_TIMING 2>/dev/null || true)"
-    if [[ "${cur_timing:-}" != "${BENCH_TIMING}" ]]; then
+    cur_marty_split="$(dc exec -T bench printenv MARTY_COMPLEX_SPLIT_RESPONSE 2>/dev/null || true)"
+    cur_go_raw_cgi="$(dc exec -T bench printenv GO_COMPLEX_RAW_CGI 2>/dev/null || true)"
+    if [[ "${cur_timing:-}" != "${BENCH_TIMING}" ]] || [[ "${cur_marty_split:-}" != "${MARTY_COMPLEX_SPLIT_RESPONSE}" ]] || [[ "${cur_go_raw_cgi:-}" != "${GO_COMPLEX_RAW_CGI}" ]]; then
       need_recreate=1
     fi
   fi
 
   if [[ "$need_recreate" == "1" ]]; then
-    echo ">> BENCH_TIMING changed (${cur_timing:-unset} -> ${BENCH_TIMING}), recreating container"
+    echo ">> container env changed (BENCH_TIMING ${cur_timing:-unset} -> ${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE ${cur_marty_split:-unset} -> ${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI ${cur_go_raw_cgi:-unset} -> ${GO_COMPLEX_RAW_CGI}), recreating container"
     start_stack
     return
   fi
 
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]] && curl -sf -o /dev/null -m 5 "$PROBE_URL"; then
-    echo ">> reusing running complex bench container on ${BASE} (probe ok, BENCH_TIMING=${BENCH_TIMING})"
+    echo ">> reusing running complex bench container on ${BASE} (probe ok, BENCH_TIMING=${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE=${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
     return
   fi
 
@@ -120,9 +132,22 @@ TARGETS=(
   "php /matrix|${BASE}/php/complex.php/matrix/${MATRIX_SIZE}"
 )
 
+target_enabled() {
+  local label="$1"
+  local lang="${label%% *}"
+  local wanted
+  for wanted in $BENCH_LANGS; do
+    if [[ "$lang" == "$wanted" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 run_hey() {
   local url="$1"
-  hey -n "$N" -c "$C" -m GET "$url" 2>&1
+  local requests="${2:-$N}"
+  hey -n "$requests" -c "$C" -m GET "$url" 2>&1
 }
 
 parse_metric() {
@@ -265,6 +290,12 @@ run_one_target() {
 
   read -r timing_impl timing_route <<< "$(bench_timing_key "$label")"
 
+  if [[ "$WARMUP_N" -gt 0 ]]; then
+    echo ">> $label (warm-up ${WARMUP_N} requests) …"
+    run_hey "$url" "$WARMUP_N" >/dev/null || true
+    sleep "$PAUSE"
+  fi
+
   for run in $(seq 1 "$RUNS"); do
     if [[ "$RUNS" -gt 1 ]]; then
       echo ">> $label (run ${run}/${RUNS}) …"
@@ -324,6 +355,7 @@ run_one_target() {
 ensure_apache
 echo ">> waiting for handlers…"
 for pair in "${TARGETS[@]}"; do
+  target_enabled "${pair%%|*}" || continue
   wait_ready "${pair#*|}"
 done
 
@@ -336,10 +368,16 @@ echo
 echo "Fair complex benchmark (CPU routes)"
 echo "  Server:     Apache in Docker (CGI + mod_php), port default 8081"
 echo "  Workloads:  primes/${PRIME_LIMIT} (sieve), fibonacci/${FIB_N}, matrix/${MATRIX_SIZE}"
+echo "  Handlers:   ${BENCH_LANGS}"
 echo "  Requests:   $N per (handler × route), concurrency $C (hey)"
+if [[ "$WARMUP_N" -gt 0 ]]; then
+  echo "  Warm-up:    $WARMUP_N requests per target before measured runs"
+fi
 echo "  Runs:       $RUNS per target (median when > 1)"
 echo "  Between:    ${PAUSE}s pause, no container restart"
 echo "  BENCH_TIMING: ${timing_mode}"
+echo "  MARTY_COMPLEX_SPLIT_RESPONSE: ${MARTY_COMPLEX_SPLIT_RESPONSE}"
+echo "  GO_COMPLEX_RAW_CGI: ${GO_COMPLEX_RAW_CGI}"
 echo
 
 declare -a LABELS=()
@@ -353,6 +391,7 @@ declare -a SLOW_MS=()
 declare -a RPS=()
 
 for pair in "${TARGETS[@]}"; do
+  target_enabled "${pair%%|*}" || continue
   run_one_target "${pair%%|*}" "${pair#*|}"
   sleep "$PAUSE"
 done

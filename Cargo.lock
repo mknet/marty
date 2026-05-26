@@ -530,6 +530,9 @@ dependencies = [
 [[package]]
 name = "marty-complex-bench"
 version = "0.1.0"
+dependencies = [
+ "marty",
+]
 
 [[package]]
 name = "marty-webhook-bench"

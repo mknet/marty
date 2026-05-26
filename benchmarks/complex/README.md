@@ -71,20 +71,33 @@ Use **just recipes** (do not put `# comments` on the same line as `just …` —
 | **Diagnose** (default) | `just bench-fair-diagnose` | Startup column + per-request log |
 | **Throughput** | `just bench-fair-throughput` | `BENCH_TIMING=0`, no log I/O |
 | **Stability** | `just bench-fair-stable` | 3 hey runs per target, median in table |
+| **Rust vs Go stable** | `just bench-fair-rust-go-stable` | Marty + Go only, `BENCH_TIMING=0`, warm-up, 5 runs × 5000 requests |
+| **Go raw CGI experiment** | `just bench-fair-go-raw-cgi` | Rebuilds Go with `GO_COMPLEX_RAW_CGI=1` to bypass `net/http/cgi` response writing |
 | Rebuild + diagnose | `just bench-fair-rebuild-diagnose` | Fresh Docker image |
 | Rebuild + throughput | `just bench-fair-rebuild-throughput` | Fresh image, no timing log |
 
-`just bench-fair` keeps env overrides (`BENCH_TIMING`, `BENCH_RUNS`). Recreate the container when changing `BENCH_TIMING` (compose `environment` + `PassEnv`).
+`just bench-fair` keeps env overrides (`BENCH_TIMING`, `BENCH_RUNS`, `BENCH_LANGS`, `BENCH_WARMUP_REQUESTS`). Use `BENCH_LANGS="marty go"` when only Rust/Go parity matters. Recreate the container when changing `BENCH_TIMING` (compose `environment` + `PassEnv`).
 
 Profile single request (not comparable to hey req/s): `?profile=1` on any route.
 
 From `benchmarks/`: `just complex-bench-fair`. From repo root: `just bench-complex-fair`.
 
+### Direct spawn bench
+
+The Apache benchmark above stays the main CGI-through-HTTP comparison. As a complementary diagnostic, `just bench-spawn` builds only the Rust and Go complex CGI binaries locally and invokes each binary directly as a CGI process, without Apache, TCP, or concurrency:
+
+```bash
+just bench-spawn
+BENCH_SPAWN_REQUESTS=200 just bench-spawn
+```
+
+Defaults: `2000` direct process invocations per handler × route, `20` warm-up invocations, routes `primes/400000 fibonacci/42 matrix/128`. This isolates process startup + binary runtime + CGI output from Apache scheduling and connection behavior.
+
 ## Performance expectations (CGI)
 
 Each request = **new process** (`fork` + `exec`). **marty-complex** is a standalone sync CGI binary (`PATH_INFO` dispatch, hand-written JSON, no hyper/serde in the bench crate). Go uses `net/http/cgi` + chi. PHP uses **mod_php** (no per-request fork) — not apples-to-apples with CGI for latency.
 
-After the Go-parity pass (see **Run F** in [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md)), Marty matches or beats Go in-process on `/primes` and beats Go on `/matrix`; under `hey`, Marty is close on `/fibonacci`, faster on `/matrix`, and still trails Go on `/primes` P50 because Go's request distribution has a very fast median. The remaining `/primes` gap is no longer framework-related.
+After the Go-parity pass and the single-write CGI stdout fix (see **Run K** in [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md)), Marty is now competitive with or faster than Go on warmed P50, P95 and P99 for all three routes. The decisive change: Marty emits exactly **one `write()` syscall per CGI response** (status + headers + body in one combined buffer written through the raw stdout fd, bypassing Rust's `LineWriter`), down from five. Rust PGO + `target-cpu=native` are optional throughput boosters layered on top.
 
 The Rust-only primes optimization keeps the same Sieve of Eratosthenes algorithm but uses an explicit `Vec<u8>` composite array and a direct marking loop, which is a better hot-loop shape for Rust/LLVM. Go/Python/PHP were not changed for Run F.
 
@@ -106,7 +119,17 @@ docker exec marty-bench-complex-bench-1 ldd /usr/lib/cgi-bin/marty-complex
 
 Expected: `not a dynamic executable`.
 
-The **`marty`** library exposes feature **`sync-cgi`** (sync [`Router`](../../marty/src/router.rs) without hyper) for other binaries; the complex bench does not link `marty` to keep the CGI executable small (~450 KiB static musl vs ~3 MiB Go in Docker).
+Optional Rust-only build experiments:
+
+```bash
+MARTY_TARGET_CPU=native BENCH_REBUILD=1 just bench-fair-rebuild-native
+just bench-fair-pgo
+TRACE_REQUESTS=50 TRACE_ROUTE=fibonacci/42 just trace-marty-tail
+```
+
+`MARTY_TARGET_CPU=native` lets LLVM tune the Rust binary for the Docker build CPU. `bench-fair-pgo` builds an instrumented Marty image, trains it against the three Marty routes, merges `.profraw` into `.pgo/merged.profdata`, then rebuilds with `-Cprofile-use`. `trace-marty-tail` is diagnostic only; it has timeouts because attaching `strace` to Apache workers can perturb the benchmark heavily.
+
+The **`marty`** library exposes feature **`sync-cgi`** (sync [`Router`](../../marty/src/router.rs) without hyper) for small CGI binaries. The complex bench intentionally uses this library path so the benchmark reflects `marty` as used by applications, while keeping route compute and JSON encoding explicit for reproducible CPU workloads.
 
 ## Layout
 
