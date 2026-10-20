@@ -1,0 +1,10 @@
+---
+description: Commit message style — subject starts lowercase
+alwaysApply: true
+---
+
+# Commit messages
+
+- Start the **subject line with a lowercase** letter (e.g. `remove pacing`, not `Remove pacing`).
+- Keep the rest of the usual style: short subject, focus on why, optional body after a blank line.
+- Do not use conventional-commit type prefixes unless the repo already does.
