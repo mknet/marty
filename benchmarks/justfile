@@ -74,9 +74,6 @@ complex-bench-fair-rust-go-stable:
 complex-bench-fair-go-raw-cgi:
     just -f complex/justfile bench-fair-go-raw-cgi
 
-complex-bench-fair-marty-go-like:
-    just -f complex/justfile bench-fair-marty-go-like
-
 complex-bench-fair-rebuild-diagnose:
     just -f complex/justfile bench-fair-rebuild-diagnose
 
