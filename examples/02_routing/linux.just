@@ -1,4 +1,4 @@
-# Linux + musl for `marty-02-routing` (shared zigbuild: root `justfile` `_linux_musl`).
+# Linux + musl for sync `marty-02-routing` (shared zigbuild: root `justfile` `_linux_musl`).
 # From this directory: `just linux` (x86_64) or `just linux arm` (aarch64).
 # On success, copies `htaccess.basic.in` → `dist.htaccess`.
 

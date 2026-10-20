@@ -1,4 +1,4 @@
-# Smoke: marty-02-routing behind _http-cgi-server (two routes).
+# Smoke: marty-02-routing (sync marty::Router) behind _http-cgi-server.
 GET {{base_url}}/cgi-bin/marty-02-routing
 HTTP 200
 [Asserts]
