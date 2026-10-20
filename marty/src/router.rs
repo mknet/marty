@@ -228,12 +228,40 @@ impl PathPattern {
                     }
                 }
                 PathSegment::Param(name) => {
-                    params.insert(name.clone(), value.to_string());
+                    params.insert(name.clone(), percent_decode_segment(value));
                 }
             }
         }
 
         Some(params)
+    }
+}
+
+/// Decode `%XX` sequences in one path segment (CGI `PATH_INFO` is typically still encoded).
+fn percent_decode_segment(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (from_hex(bytes[i + 1]), from_hex(bytes[i + 2])) {
+                out.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn from_hex(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -261,6 +289,16 @@ mod tests {
         let m = p.match_path("/hello/world");
         assert!(m.is_some());
         assert_eq!(m.unwrap().get("name").map(|s| s.as_str()), Some("world"));
+    }
+
+    #[test]
+    fn match_param_percent_decoded() {
+        let p = PathPattern::parse("/hello/{name}");
+        let m = p.match_path("/hello/%3Ca%20href%3D%22%2F%22%3EBiff%3C%2Fa%3E");
+        assert_eq!(
+            m.unwrap().get("name").map(|s| s.as_str()),
+            Some(r#"<a href="/">Biff</a>"#)
+        );
     }
 
     #[test]
