@@ -3,11 +3,11 @@
 > *“Roads? Where we’re going, we don’t need roads.”*  
 > — Doc Brown, *Back to the Future* (and yet: sometimes all you need is **one process per request**—and we call that **CGI**.)
 
-**Marty** is the new name on [crates.io](https://crates.io) for Rust helpers around the [Common Gateway Interface](https://en.wikipedia.org/wiki/Common_Gateway_Interface) (RFC 3875). The line starts with [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) (the original project), continues in the [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) fork, and lands here—with more *Huey Lewis*, more *88 mph*, and the firm belief that your next HTTP stack does not need a DeLorean, only solid types.
+**Marty** helps you write **Rust CGI** for [shared hosting](#shared-hosting-all-inkl-style): one static binary, upload to `cgi-bin/`, no VPS required. Lineage: [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) → [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) → this tree ([**github.com/mknet/marty**](https://github.com/mknet/marty)).
 
-This repository: [**github.com/mknet/marty**](https://github.com/mknet/marty).
+Product defaults: [`docs/DIRECTION.md`](docs/DIRECTION.md) — **sync-first**; Axum/`tower` is optional for existing handlers. CGI stacks → [`docs/CGI-VARIANTS.md`](docs/CGI-VARIANTS.md). Cost sketch → [`docs/COST.md`](docs/COST.md).
 
-## Lineage (who did what, no time paradox)
+## Lineage
 
 | Stage | Repository |
 |--------|------------|
@@ -19,33 +19,37 @@ This repository: [**github.com/mknet/marty**](https://github.com/mknet/marty).
 
 ## Great Scott — what is this?
 
-A CGI server **launches** (classically) a script as its **own process** for each incoming request. Think of it as a trip to another timeline: clean isolation, gone when the work is done, and the next request gets a fresh *timeline*.
-
-For typical HTTP services, CGI’s role has long been superseded by models that keep **long-lived** worker processes around (*“where we’re going, we keep the server running”*). That buys you latency and throughput. CGI is still useful when you want **very low idle footprint** and are willing to trade some throughput for a **simple resource story** (one request, one process)—*low power mode* for Hill Valley instead of constant fire from the Mr. Fusion equivalent.
+A CGI server **launches** a script as its **own process** for each request: clean isolation, gone when the work is done. That trades some throughput for a **simple resource story**—ideal when you want Rust on a shared host instead of a long-lived VPS process.
 
 ---
 
-## Crates in the ecosystem (status: evolving from cgi-rs)
+## Recommended: sync router (`sync-cgi`)
 
-The [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) / [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) workspace is split into several crates. The story continues on crates.io under **Marty**; the exact layout in [**mknet/marty**](https://github.com/mknet/marty) follows the port.
+Smallest binary, no Tokio. Feature **`sync-cgi`** (disable default features if you want to drop hyper):
 
-| Theme | Idea |
-|--------|------|
-| **Core** | CGI environment → `hyper::Request` / `hyper::Response` |
-| **Tower / Axum** | Same crate: enable **`marty` feature `tower`** for `serve_cgi` + `marty::tower` (full `Router` / routing stacks as CGI) |
-| **Dev server** | Example-only TCP harness: `examples/_http-cgi-server` — first `/cgi-bin/` segment is the binary, remainder is `PATH_INFO` |
-| **Examples** | `01_basic` — static `CGIResponse`; `02_routing` — Axum routes + `serve_cgi`; `03_session` / `04_cookies` / `05_sqlite` — tower-sessions, tower-cookies, rusqlite; `sample-cgi-script` — combined kitchen-sink demo |
-| **Apache (combined short URLs)** | `examples/apache-combined-vhost.htaccess.in` — `/basic`, `/routing`, `/session`, `/cookies`, `/sqlite` → matching `cgi-bin/marty-*` on one vhost |
+```rust ignore
+// marty = { version = "…", default-features = false, features = ["sync-cgi"] }
+use marty::Router;
 
-This repository is a **Cargo workspace** mirroring [mknet/cgi-rs `develop`](https://github.com/mknet/cgi-rs/tree/develop): the **`marty/`** crate replaces **`cgi-rs`** and, with the **`tower`** feature, integrates the old **`tower-cgi`** behaviour inside `marty::tower` (no separate Tower crate in this tree). For local demos, **`examples/_http-cgi-server/`** (`cargo run -p _http-cgi-server`) is a minimal HTTP+CGI test harness—not production software. The [sample-cgi-script](https://github.com/mknet/cgi-rs/tree/develop/sample-cgi-script) lives at **`examples/sample-cgi-script/`** (`marty` with `features = ["tower"]`). **`examples/01_basic/`** is the smallest demo: default `marty` only, synchronous `main`, writes a fixed body via `CGIResponse::write_response_to_output` (`cargo run -p marty-01-basic`). **Smoke test** (build → `cgi-bin/` → `_http-cgi-server` → [Hurl](https://hurl.dev) assertions in `examples/01_basic/smoke.hurl`): install [`just`](https://github.com/casey/just) and **`hurl`**, then from the repo root run `just smoke-01-basic` (needs `python3` for the Cargo target path when copying the binary). Run the larger sample with `cargo run -p sample-cgi-script`.
+fn main() {
+    let mut router = Router::new();
+    router.get("/", |_| "Hello, World!\n");
+    router.get("/hello/{name}", |req| {
+        let name = req.param("name").unwrap_or("world");
+        format!("Hello, {name}!\n")
+    });
+    router.fallback(|_| (404u16, "Not found\n"));
+    router.serve().unwrap();
+}
+```
 
-If you return from the future and suddenly need **Windows**: upstream still listed that as a limitation—check the current README in the repo before you bet the farm on 1955.
+Full example: [`examples/02_routing`](examples/02_routing/) (`just smoke-02-routing`).
 
 ---
 
-## Tower / Axum: *“I guess you guys aren’t ready for that yet”*
+## Optional: Axum / Tower (`tower`)
 
-This pattern comes straight from the cgi-rs README ([**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs) original; same text in the [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs) fork): a **Tower** `Service`—for example an Axum `Router`—is run behind **`marty`’s `serve_cgi`** when the **`tower`** feature is enabled:
+Reuse **existing** Axum handlers as CGI via [`serve_cgi`](https://docs.rs/marty). Larger binary; latency on shared hosting ≈ sync (TLS/RTT dominates). See [`examples/06_axum`](examples/06_axum/) and [`docs/DIRECTION.md`](docs/DIRECTION.md).
 
 ```rust ignore
 // marty = { version = "…", features = ["tower"] }
@@ -59,45 +63,24 @@ async fn main() {
 }
 ```
 
-**Operation:** Like the *Enchantment Under the Sea* dance—steady tempo, one route at a time, and no panicking before the first note.
-
 ---
 
-## Core: CGI → Hyper (meta-variables & request)
+## Workspace map
 
-The core crate (historically **`cgi_rs`**, on crates.io as **`marty`**) maps the CGI environment to [`hyper::Request`](https://docs.rs/hyper/latest/hyper/struct.Request.html) / [`hyper::Response`](https://docs.rs/hyper/latest/hyper/struct.Response.html) so you can keep building with the rest of the **Hyper** ecosystem—without your code unraveling like *alternate 1985*.
+| Theme | Idea |
+|--------|------|
+| **Sync CGI** | Feature `sync-cgi`: [`CgiRequest`](marty/src/cgi.rs) / [`CgiResponse`](marty/src/cgi.rs) / [`Router`](marty/src/router.rs) |
+| **Hyper CGI** | Default `hyper-cgi`: CGI env → `hyper::Request` / `hyper::Response` |
+| **Tower / Axum** | Feature `tower`: `serve_cgi` + `multi_mount_cgi_router*` |
+| **Dev server** | `examples/_http-cgi-server` — first `/cgi-bin/` segment is the binary, rest is `PATH_INFO` |
+| **Examples** | `01_basic` — fixed response; **`02_routing` — sync `Router`**; `03`–`05` — sessions/cookies/sqlite (Tower); **`06_axum` — optional Axum**; `sample-cgi-script` — kitchen sink |
+| **Benches** | [`benchmarks/complex/`](benchmarks/complex/) (Docker + upload/outside); host probe: [`tools/hosting-probe/`](tools/hosting-probe/) |
 
-### Current limitations (per upstream docs: [**cbgbt/cgi-rs**](https://github.com/cbgbt/cgi-rs), [**mknet/cgi-rs**](https://github.com/mknet/cgi-rs))
+Local smoke (build → `cgi-bin/` → `_http-cgi-server` → [Hurl](https://hurl.dev)): `just setup`, then e.g. `just smoke-02-routing`.
 
-- Focused on **utilities for CGI scripts**, not a full CGI server in the crate sense.
-- Only **“Document”-style** responses.
-- Only a **subset** of CGI environment variables are hoisted into requests.
-- **No Windows** (in the referenced upstream state).
+**Windows:** not supported (Unix CGI env / `OsStrExt`).
 
-### Example: parse an HTTP request from the CGI environment
-
-```rust ignore
-// Target API on crates.io; until the port lands you may still see `cgi_rs::…`.
-use hyper::{Request, Body};
-use marty::CGIRequest;
-
-fn main() {
-    // In a real CGI environment the server sets these variables (and more).
-    std::env::set_var("REQUEST_METHOD", "GET");
-    std::env::set_var("CONTENT_LENGTH", "0");
-    std::env::set_var("REQUEST_URI", "/");
-
-    let cgi_request: Request<Body> = CGIRequest::from_env()
-        .and_then(Request::try_from)
-        .unwrap();
-}
-```
-
-> **Note:** While the public API is still being ported 1:1 from `cgi_rs`, your checkout may temporarily still show `cgi_rs::…`. The goal is a single **`marty::`** path on crates.io.
-
-### Example: meta-variables (RFC 3875)
-
-You can always read environment variables raw—the core also offers a **structured** way to fetch and parse CGI *meta-variables*:
+### Meta-variables (RFC 3875)
 
 ```rust ignore
 fn main() {
@@ -108,7 +91,41 @@ fn main() {
 }
 ```
 
-If `REQUEST_METHOD` is missing, that is the wrong almanac in the suitcase: **double-check your server configuration** before you fix the timeline.
+---
+
+## Shared hosting (all-inkl–style)
+
+Product defaults: [`docs/DIRECTION.md`](docs/DIRECTION.md).
+
+Marty targets **one static CGI binary per app** (upload to `cgi-bin/`, `chmod 755`). Findings from probing and light outside load on [all-inkl.com](https://all-inkl.com) (Oct 2026), mirrored locally in `benchmarks/complex` (`just bench-fair-hosting`) and exercised via `tools/`:
+
+### What the host looks like
+
+| Fact | Implication |
+|------|-------------|
+| CGI `stdin`/`stdout` are **unix sockets** (`mod_cgid`) | Threaded MPM (event/worker), **not** classic prefork + `mod_cgi` pipes |
+| CGI runs as the **FTP/site user** (suexec-style cleaned env) | Only CGI/1.1 + `HTTP_*` + `SSL_*` vars reach the binary; `.htaccess` `SetEnv` toggles do **not** |
+| KeepAlive on, chunked responses, HTTP/2 over TLS | Absolute latency includes TLS + RTT (~40–60 ms floor for an empty CGI) |
+| Ubuntu 24.04 / Apache 2.4.x | Match with `benchmarks/complex/docker/Dockerfile.hosting` for local A/B |
+
+### Languages on that host
+
+| Runtime | Result |
+|---------|--------|
+| **Marty / Rust** (static musl) | Works. Small RSS; fine under suexec. |
+| **PHP** (FPM / host PHP) | Works. Short routes ≈ Marty (TLS cost dominates); heavy CPU → Marty much faster (~10× on `matrix/400`). |
+| **Go** (static `CGO_ENABLED=0`) | **Does not run**: runtime dies at init with `out of memory allocating heap arena map` (address-space limit). Kept in the complex bench as a negative proof. |
+
+So for all-inkl–class CGI, **Rust is the practical compiled option**; Go is out. Versus PHP, Marty is at least as good on light work and clearly better when the request is compute-heavy.
+
+### Two routing stacks (same workloads)
+
+| Binary | Marty features | Router | Binary size idea |
+|--------|----------------|--------|------------------|
+| `marty-sync` | `sync-cgi` only | `marty::Router` (sync) | Smallest |
+| `marty-axum` | `tower` | Axum `Router` + `serve_cgi` | Larger (Tokio/Axum) |
+
+Same suite: [`benchmarks/complex/`](benchmarks/complex/) (`just linux` / `just outside` / `just bench-fair-hosting`). Probe: [`tools/hosting-probe/`](tools/hosting-probe/). Do **not** treat prefork-only Docker numbers as “all-inkl truth”.
 
 ---
 
