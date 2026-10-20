@@ -1,36 +1,42 @@
-//! Example **03_session**: `tower_sessions` with Axum behind `marty::serve_cgi`.
+//! Example **03_session**: HMAC-signed cookie session via sync [`marty::Router`].
 //!
-//! Uses `MemoryStore` — state lives in this process only. In classic CGI **one process per
-//! request**, so this demo focuses on the **session API in a single request** (read counter,
-//! increment, write). For session continuity across browser requests behind CGI, use a
-//! persistent store (file/DB) or a client-carrying strategy your stack supports.
+//! The session rides in a signed cookie so it survives classic CGI (one process per
+//! request). Set `MARTY_SESSION_SECRET` in production; a demo default is used otherwise.
 
-use axum::{Router, routing::get};
-use marty::serve_cgi;
-use tower_sessions::cookie::time::Duration;
-use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
+use marty::{CgiRequest, CgiResponse, Router, SessionStore};
 
-#[tokio::main]
-async fn main() {
-    let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_expiry(tower_sessions::Expiry::OnInactivity(Duration::minutes(10)));
+fn main() {
+    let req = match CgiRequest::from_env() {
+        Ok(req) => req,
+        Err(e) => {
+            eprintln!("Error while reading CGI request: {e}");
+            let _ = CgiResponse::new(500, "Internal server error\n").write_response_to_stdout();
+            std::process::exit(1);
+        }
+    };
 
-    let app = Router::new()
-        .route(
-            "/cgi-bin/marty-03-session",
-            get(|session: Session| async move {
-                let count: u32 = session.get("count").await.unwrap().unwrap_or(0);
-                let next = count.saturating_add(1);
-                session.insert("count", next).await.unwrap();
-                format!("03_session: in-request visit counter = {next}\n")
-            }),
-        )
-        .layer(session_layer);
+    let store = SessionStore::new(session_secret()).cookie_name("marty_03");
+    let mut session = store.load(&req);
+    let count: u32 = session
+        .get("count")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let next = count.saturating_add(1);
+    session.insert("count", next.to_string());
 
-    if let Err(e) = serve_cgi(app).await {
+    let mut router = Router::new();
+    router.get("/", move |_| format!("03_session: visit counter = {next}\n"));
+    router.fallback(|_| (404u16, "Not found\n"));
+
+    let resp = store.save(&session, router.handle_request(req));
+    if let Err(e) = resp.write_response_to_stdout() {
         eprintln!("Error while serving CGI request: {e}");
         std::process::exit(1);
     }
+}
+
+fn session_secret() -> Vec<u8> {
+    std::env::var("MARTY_SESSION_SECRET")
+        .unwrap_or_else(|_| "dev-only-change-me-marty-03".into())
+        .into_bytes()
 }

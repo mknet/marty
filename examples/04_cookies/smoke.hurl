@@ -1,4 +1,4 @@
-# Smoke: marty-04-cookies (tower-cookies).
+# Smoke: marty-04-cookies (sync Set-Cookie).
 GET {{base_url}}/cgi-bin/marty-04-cookies
 HTTP 200
 [Asserts]

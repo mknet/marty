@@ -4,10 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Marty example 04_cookies: tower-cookies + Axum behind serve_cgi."
+description = "Marty example 04_cookies: sync Set-Cookie via marty::Cookie."
 
 [dependencies]
-axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tower-cookies = "0.11"
+marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }

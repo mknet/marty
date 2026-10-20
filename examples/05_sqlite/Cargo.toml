@@ -4,10 +4,8 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Marty example 05_sqlite: rusqlite + Axum behind serve_cgi."
+description = "Marty example 05_sqlite: rusqlite + sync marty::Router."
 
 [dependencies]
-axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
+marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
 rusqlite = { version = "0.33", features = ["bundled"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

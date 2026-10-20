@@ -4,10 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Marty example 03_session: tower-sessions + Axum behind serve_cgi (MemoryStore, single-request demo)."
+description = "Marty example 03_session: sync signed cookie session (works across CGI requests)."
 
 [dependencies]
-axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tower-sessions = "0.15"
+marty = { path = "../../marty", default-features = false, features = ["sync-cgi", "session"] }
