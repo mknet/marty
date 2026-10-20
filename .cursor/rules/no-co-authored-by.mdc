@@ -1,0 +1,10 @@
+---
+description: Never add Co-authored-by trailers to git commits
+alwaysApply: true
+---
+
+# Git commits — no Co-authored-by
+
+- **Never** add `Co-authored-by:` (or similar trailer) to commit messages.
+- Do not attribute Cursor, the agent, or any tool as a co-author.
+- Commit messages are only the subject/body the user would write; no automated trailers unless the user explicitly requests one.
