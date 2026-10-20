@@ -492,9 +492,7 @@ dependencies = [
 name = "marty-02-routing"
 version = "0.1.0"
 dependencies = [
- "axum 0.8.9",
  "marty",
- "tokio",
 ]
 
 [[package]]
@@ -528,15 +526,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "marty-complex-bench"
+name = "marty-06-axum"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.9",
  "marty",
+ "tokio",
 ]
+
+[[package]]
+name = "marty-axum"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "marty",
+ "marty-bench-shared",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "marty-bench-shared"
+version = "0.1.0"
 
 [[package]]
 name = "marty-hosting-probe"
 version = "0.1.0"
+
+[[package]]
+name = "marty-sync"
+version = "0.1.0"
+dependencies = [
+ "marty",
+ "marty-bench-shared",
+]
 
 [[package]]
 name = "marty-webhook-bench"

@@ -28,3 +28,5 @@ linux-musl-04-cookies = "zigbuild -p marty-04-cookies --release --target x86_64-
 linux-musl-04-cookies-aarch64 = "zigbuild -p marty-04-cookies --release --target aarch64-unknown-linux-musl"
 linux-musl-05-sqlite = "zigbuild -p marty-05-sqlite --release --target x86_64-unknown-linux-musl"
 linux-musl-05-sqlite-aarch64 = "zigbuild -p marty-05-sqlite --release --target aarch64-unknown-linux-musl"
+linux-musl-06-axum = "zigbuild -p marty-06-axum --release --target x86_64-unknown-linux-musl"
+linux-musl-06-axum-aarch64 = "zigbuild -p marty-06-axum --release --target aarch64-unknown-linux-musl"
