@@ -12,6 +12,7 @@ members = [
     "examples/sample-cgi-script",
     "benchmarks/simple/marty-webhook",
     "benchmarks/complex/marty-complex",
+    "tools/hosting-probe/probe-rs",
 ]
 
 [profile.release]
