@@ -8,6 +8,7 @@ members = [
     "examples/03_session",
     "examples/04_cookies",
     "examples/05_sqlite",
+    "examples/06_axum",
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
     "benchmarks/simple/marty-webhook",
