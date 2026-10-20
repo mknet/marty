@@ -2,32 +2,30 @@
 
 | Suite | Description |
 |-------|-------------|
-| **[`simple/`](simple/)** | Minimal webhook (POST JSON + secret → JSON ack): Marty vs Go vs Python CGI vs PHP mod_php |
-| **[`complex/`](complex/)** | Three CPU-heavy GET routes (primes / fibonacci / matrix) — same four languages |
+| **[`complex/`](complex/)** | CPU routes (primes / fibonacci / matrix): Marty sync + Axum, Go, Python, PHP — Docker (prefork + hosting-like) and shared-host upload/outside |
+| **[`simple/`](simple/)** | Minimal webhook (POST JSON + secret → JSON ack): Marty vs Go vs Python CGI vs PHP |
 
-## Quick start (complex)
+Product direction: [`docs/DIRECTION.md`](../docs/DIRECTION.md). CGI stacks: [`docs/CGI-VARIANTS.md`](../docs/CGI-VARIANTS.md).
+
+## Complex (Docker + outside)
 
 ```bash
 cd benchmarks/complex
-just bench-fair    # Apache :8081, 12 rows (4 langs × 3 routes)
+just bench-fair              # prefork lab image
+just bench-fair-hosting      # event/cgid/suexec mirror
+just linux                   # musl upload binaries → dist/
+just outside https://…       # low-volume sync/axum/php on a real host
 ```
+
+Host fingerprint (not a bench): [`tools/hosting-probe/`](../tools/hosting-probe/).
 
 See [`complex/README.md`](complex/README.md).
 
-## Quick start (simple)
+## Simple
 
 ```bash
 cd benchmarks/simple
 just bench-fair
 ```
 
-Or from the repo root: `just bench-webhook-fair`.
-
-From `benchmarks/` (forwards to simple):
-
-```bash
-cd benchmarks
-just simple-bench-fair
-```
-
-See [`simple/README.md`](simple/README.md) for details.
+Or from the repo root: `just bench-webhook-fair`. See [`simple/README.md`](simple/README.md).
