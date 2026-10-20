@@ -7,4 +7,4 @@ publish = false
 description = "Marty complex benchmark: CPU-heavy GET routes (standalone sync CGI binary)."
 
 [dependencies]
-marty = { path = "../../../marty", default-features = false, features = ["sync-cgi"] }
+marty = { path = "../../../marty", default-features = false, features = ["sync-cgi", "apache-cgi-pacing"] }
