@@ -38,6 +38,9 @@ fn main() {
         let name = req.param("name").unwrap_or("world");
         format!("Hello, {name}!\n")
     });
+    router.get("/static/{*path}", |req| {
+        format!("file {}\n", req.param("path").unwrap_or(""))
+    });
     router.fallback(|_| (404u16, "Not found\n"));
     router.serve().unwrap();
 }

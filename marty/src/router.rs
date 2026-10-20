@@ -6,9 +6,10 @@ type BoxedHandler = Box<dyn Fn(&CgiRequest) -> CgiResponse + Send + Sync>;
 
 /// A synchronous CGI router with method-based routing and path parameters.
 ///
-/// Routes are matched in registration order. Path parameters use `{name}` syntax:
-/// - `"/"` matches the root
-/// - `"/hello/{name}"` matches `/hello/world` → `req.param("name") == Some("world")`
+/// Routes are matched in registration order. Path patterns support:
+/// - `"/"` — root
+/// - `"/hello/{name}"` — one path segment → `req.param("name")`
+/// - `"/static/{*path}"` — catch-all (must be last) → remaining segments joined by `/`
 ///
 /// The Router automatically strips `SCRIPT_NAME` from the request path so that
 /// routes are relative to the CGI script's mount point.
@@ -23,7 +24,10 @@ type BoxedHandler = Box<dyn Fn(&CgiRequest) -> CgiResponse + Send + Sync>;
 ///     let name = req.param("name").unwrap_or("world");
 ///     format!("Hello, {name}!\n")
 /// });
-/// router.fallback(|_| (404, "Not found\n"));
+/// router.get("/static/{*path}", |req| {
+///     format!("file {}\n", req.param("path").unwrap_or(""))
+/// });
+/// router.fallback(|_| (404u16, "Not found\n"));
 /// router.serve().unwrap();
 /// ```
 pub struct Router {
@@ -48,10 +52,10 @@ impl Router {
 
     /// Register a GET handler for the given path pattern.
     ///
-    /// Path patterns support `{param}` syntax. Examples:
+    /// Path patterns support `{param}` and a trailing `{*catch_all}`. Examples:
     /// - `"/"` → root
     /// - `"/hello/{name}"` → one path parameter
-    /// - `"/primes/{limit}"` → another single parameter
+    /// - `"/assets/{*path}"` → catch-all remainder
     pub fn get<H, R>(&mut self, pattern: &str, handler: H) -> &mut Self
     where
         H: Fn(&CgiRequest) -> R + Send + Sync + 'static,
@@ -154,12 +158,10 @@ impl Router {
             }
         }
 
-        // Try fallback
         if let Some(fallback) = &self.fallback {
             return fallback(&req);
         }
 
-        // Default 404
         CgiResponse::new(404, "Not found\n")
     }
 }
@@ -172,7 +174,7 @@ impl Default for Router {
 
 // ---- Path pattern matching ----
 
-/// A parsed path pattern like `/hello/{name}`.
+/// A parsed path pattern like `/hello/{name}` or `/static/{*path}`.
 #[derive(Debug, Clone)]
 struct PathPattern {
     segments: Vec<PathSegment>,
@@ -183,8 +185,10 @@ struct PathPattern {
 enum PathSegment {
     /// A literal segment that must match exactly (e.g., `"hello"`).
     Literal(String),
-    /// A parameter segment that matches any value (e.g., `{name}`).
+    /// A parameter segment that matches any single segment (e.g., `{name}`).
     Param(String),
+    /// Catch-all: matches zero or more remaining segments (must be last).
+    CatchAll(String),
 }
 
 impl PathPattern {
@@ -193,18 +197,37 @@ impl PathPattern {
     /// Examples:
     /// - `"/"` → empty segments
     /// - `"/hello/{name}"` → [Literal("hello"), Param("name")]
+    /// - `"/static/{*path}"` → [Literal("static"), CatchAll("path")]
     fn parse(pattern: &str) -> Self {
         let segments: Vec<PathSegment> = pattern
             .split('/')
             .filter(|s| !s.is_empty())
             .map(|seg| {
-                if seg.starts_with('{') && seg.ends_with('}') && seg.len() > 2 {
+                if seg.starts_with("{*") && seg.ends_with('}') && seg.len() > 3 {
+                    let name = &seg[2..seg.len() - 1];
+                    assert!(
+                        !name.is_empty(),
+                        "catch-all parameter name must not be empty"
+                    );
+                    PathSegment::CatchAll(name.to_string())
+                } else if seg.starts_with('{') && seg.ends_with('}') && seg.len() > 2 {
                     PathSegment::Param(seg[1..seg.len() - 1].to_string())
                 } else {
                     PathSegment::Literal(seg.to_string())
                 }
             })
             .collect();
+
+        if let Some(pos) = segments
+            .iter()
+            .position(|s| matches!(s, PathSegment::CatchAll(_)))
+        {
+            assert!(
+                pos == segments.len() - 1,
+                "catch-all {{*…}} must be the last path segment"
+            );
+        }
+
         PathPattern { segments }
     }
 
@@ -214,6 +237,41 @@ impl PathPattern {
     /// or `None` if it doesn't.
     fn match_path(&self, path: &str) -> Option<HashMap<String, String>> {
         let path_segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+
+        let catch_all = self
+            .segments
+            .last()
+            .and_then(|s| match s {
+                PathSegment::CatchAll(name) => Some(name.as_str()),
+                _ => None,
+            });
+
+        if let Some(catch_name) = catch_all {
+            let fixed = &self.segments[..self.segments.len() - 1];
+            if path_segs.len() < fixed.len() {
+                return None;
+            }
+            let mut params = HashMap::new();
+            for (segment, value) in fixed.iter().zip(path_segs.iter()) {
+                match segment {
+                    PathSegment::Literal(lit) => {
+                        if lit != *value {
+                            return None;
+                        }
+                    }
+                    PathSegment::Param(name) => {
+                        params.insert(name.clone(), percent_decode_segment(value));
+                    }
+                    PathSegment::CatchAll(_) => unreachable!("catch-all only last"),
+                }
+            }
+            let rest: Vec<String> = path_segs[fixed.len()..]
+                .iter()
+                .map(|s| percent_decode_segment(s))
+                .collect();
+            params.insert(catch_name.to_string(), rest.join("/"));
+            return Some(params);
+        }
 
         if path_segs.len() != self.segments.len() {
             return None;
@@ -230,6 +288,7 @@ impl PathPattern {
                 PathSegment::Param(name) => {
                     params.insert(name.clone(), percent_decode_segment(value));
                 }
+                PathSegment::CatchAll(_) => unreachable!("catch-all handled above"),
             }
         }
 
@@ -316,6 +375,31 @@ mod tests {
         let p = PathPattern::parse("/primes/{limit}");
         assert!(p.match_path("/primes").is_none()); // missing segment
         assert!(p.match_path("/primes/400000/extra").is_none()); // too many segments
+    }
+
+    #[test]
+    fn match_catch_all() {
+        let p = PathPattern::parse("/static/{*path}");
+        let m = p.match_path("/static/a/b.css").unwrap();
+        assert_eq!(m.get("path").map(|s| s.as_str()), Some("a/b.css"));
+
+        let empty = p.match_path("/static").unwrap();
+        assert_eq!(empty.get("path").map(|s| s.as_str()), Some(""));
+
+        assert!(p.match_path("/other/a").is_none());
+    }
+
+    #[test]
+    fn match_catch_all_percent_decoded_segments() {
+        let p = PathPattern::parse("/files/{*path}");
+        let m = p.match_path("/files/dir/%20x").unwrap();
+        assert_eq!(m.get("path").map(|s| s.as_str()), Some("dir/ x"));
+    }
+
+    #[test]
+    #[should_panic(expected = "catch-all")]
+    fn catch_all_must_be_last() {
+        let _ = PathPattern::parse("/{*path}/extra");
     }
 
     #[test]
