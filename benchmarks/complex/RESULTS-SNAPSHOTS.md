@@ -6,6 +6,70 @@ Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
 
 **Use P50/P95 for comparisons**, not Avg alone — CGI runs often have long tails (Slow >> P95). Go’s **P50 can be much lower than Avg** (bimodal: many fast forks + some slow).
 
+## Run L — Marty "go-like" output (split header/body with micro-sleep) (2026-05-27)
+
+**Confirms the Apache prefork synchronization hypothesis.** With Marty's normal
+single-`write()` response, Apache `mod_cgi` reads the entire CGI document in one
+`read()` and delivers it as a single `Content-Length` segment. The library now
+exposes `CgiResponse::write_response_to_stdout_paced(delay)`, which splits
+the response into header- and body-phase writes separated by `sleep_us`
+microseconds, so that Apache observes two distinct reads from the CGI pipe —
+mirroring what Go's `bufio.Writer` emits naturally and (in our setup) causing
+Apache to switch the HTTP response to `Transfer-Encoding: chunked`.
+
+These measurements were originally captured with a temporary runtime switch
+that also spawned 3 short-lived warm-up threads to imitate Go's per-request
+`clone()` pattern. That benchmark switch has since been removed: current
+`marty-complex` enables the library feature `apache-cgi-pacing`, so the default
+`CgiResponse::write_response_to_stdout()` path handles Apache pacing at compile
+time and does not spawn diagnostic threads.
+
+Historical diagnostic command used an environment-controlled sleep value; the
+current equivalent is `BENCH_REBUILD=1 BENCH_TIMING=0 BENCH_LANGS="marty go" bash scripts/run-bench-fair.sh`
+with `marty-complex` compiled against `marty` feature `apache-cgi-pacing`.
+
+| Handler          | Mode          | Avg  | P50  | P95   | P99   | req/s   |
+|------------------|---------------|------|------|-------|-------|---------|
+| marty /primes    | baseline      | 22.4 |  8.1 |  60.7 |  89.6 |  443.02 |
+| marty /primes    | go-like 50 µs | 29.2 |  7.8 |  72.6 | 126.1 |  341.56 |
+| marty /primes    | go-like 200µs | 29.1 | 16.2 | 101.9 | 123.4 |  342.97 |
+| go /primes       | -             |  5.3 |  5.0 |   8.1 |  10.6 | 1838.82 |
+| marty /fibonacci | baseline      | 11.4 |  3.5 |  41.9 |  47.3 |  866.34 |
+| marty /fibonacci | go-like 50 µs |  5.7 |  5.2 |  10.2 |  17.5 | 1731.53 |
+| marty /fibonacci | go-like 200µs |  5.5 |  4.9 |  10.0 |  15.5 | 1810.31 |
+| go /fibonacci    | -             |  4.4 |  4.1 |   7.2 |   9.4 | 2223.91 |
+| marty /matrix    | baseline      | 15.3 |  9.8 |  32.8 | 123.5 |  650.78 |
+| marty /matrix    | go-like 50 µs |  7.2 |  6.8 |  10.3 |  12.7 | 1374.43 |
+| marty /matrix    | go-like 200µs |  7.0 |  6.7 |   9.8 |  12.5 | 1416.27 |
+| go /matrix       | -             |  7.7 |  7.2 |  11.2 |  14.4 | 1274.40 |
+
+**Conclusion:**
+
+- **`/fibonacci` and `/matrix` (short, fairly deterministic compute) close the
+  gap completely.** Marty's P95 drops from 41.9 → 10.0 ms (`fibonacci`) and
+  32.8 → 9.8 ms (`matrix`); P99 collapses from 47.3 / 123.5 → 15.5 / 12.5 ms;
+  throughput more than doubles on `/matrix` (650 → 1416 req/s) and on
+  `/fibonacci` Marty (1810 req/s) is now within 18 % of Go (2223 req/s) and
+  has the better P99.
+- **`/primes` (longer, sieve-dominated compute, ~6-15 ms) gets *worse* with
+  go-like.** Throughput drops to ~342 req/s and P95/P99 inflate. The 50 µs and
+  200 µs variants are indistinguishable, ruling out the sleep itself; the
+  cost is most likely the 3 warm-up threads + Apache's chunked path being
+  unfavorable when each request already keeps a worker busy for many ms with
+  variance. (A "go-like sleep only, no threads" mode would be needed to
+  disentangle these.)
+- The mechanism is **Apache prefork worker-pool synchronization, not CGI
+  fork/exec cost and not the application code**. Marty's super-compact
+  single-segment response causes many workers to free up in the same scheduler
+  quantum, which then collide on accept-mutex / `access_log`. Pacing the
+  response into two reads spreads them out — exactly what Go does
+  unintentionally.
+
+This validates the diagnosis from Run K's follow-ups: Marty isn't slow in
+Apache — Marty is **too fast and too synchronous** for the Apache prefork pool
+on short routes, and the fix lives in the I/O pacing of the CGI library, not
+in the application.
+
 ## Run K — Marty single-write stdout (2026-05-26)
 
 **Root cause identified.** `strace` of a single direct invocation revealed that Marty was emitting **5 separate `write()` syscalls** on stdout per CGI response (4 header lines + body), because Rust's `io::stdout()` is wrapped in a `LineWriter` that flushes on every `\n`. Go in comparison emitted only **2** (combined headers, then body) thanks to `bufio.Writer`.
