@@ -1,25 +1,14 @@
-//! Example **02_routing**: Axum [`Router`] with two GET routes, served as one CGI binary via [`marty::serve_cgi`].
+//! Example **02_routing**: sync [`marty::Router`] — recommended path for shared hosting.
 //!
-//! Uses [`marty::multi_mount_cgi_router_from_env`] so **`SCRIPT_NAME`** picks the CGI script URL
-//! (here `/cgi-bin/marty-02-routing` under the test server) without hard-coding the binary name;
-//! the same routes are also mounted under `/routing` (e.g. after Apache `mod_rewrite`). For a
-//! fixed layout without relying on the environment, use [`marty::multi_mount_cgi_router`] or
-//! [`marty::multi_mount_cgi_router_with_prefix`].
+//! - `GET …/marty-02-routing` — no path parameters
+//! - `GET …/hello/{name}` — one path segment (percent-decoded); response **HTML-escapes** `name`
+//! - Any other path → **404** with plain-text body `Not found`
 //!
-//! - `GET …/marty-02-routing` or `…/routing` — no path parameters
-//! - `GET …/hello/{name}` — one path segment as parameter (URL-decoded by Axum); the response
-//!   **HTML-escapes** `name` so arbitrary characters are safe in clients that sniff or mislabel
-//!   content type.
-//! - Any other path → **404** with plain-text body `Not found`.
+//! For existing Axum handlers, see `examples/06_axum`.
 
-use axum::Router;
-use axum::extract::Path;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::routing::get;
-use marty::{multi_mount_cgi_router_from_env, serve_cgi};
+use marty::{CgiRequest, Router};
 
-async fn root() -> &'static str {
+fn root(_req: &CgiRequest) -> &'static str {
     "02_routing: root (no path parameters).\n"
 }
 
@@ -52,21 +41,19 @@ mod tests {
     }
 }
 
-async fn hello(Path(name): Path<String>) -> impl IntoResponse {
-    let safe = escape_html(&name);
+fn hello(req: &CgiRequest) -> String {
+    let name = req.param("name").unwrap_or("world");
+    let safe = escape_html(name);
     format!("02_routing: hello, {safe}!\n")
 }
 
-#[tokio::main]
-async fn main() {
-    let inner = Router::new()
-        .route("/", get(root))
-        .route("/hello/{name}", get(hello))
-        .fallback(|| async { (StatusCode::NOT_FOUND, "Not found\n") });
+fn main() {
+    let mut router = Router::new();
+    router.get("/", root);
+    router.get("/hello/{name}", hello);
+    router.fallback(|_| (404u16, "Not found\n"));
 
-    let app = multi_mount_cgi_router_from_env(inner, &["/routing"]);
-
-    if let Err(e) = serve_cgi(app).await {
+    if let Err(e) = router.serve() {
         eprintln!("Error while serving CGI request: {e}");
         std::process::exit(1);
     }

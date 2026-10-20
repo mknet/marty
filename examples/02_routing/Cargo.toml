@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Marty example 02_routing: Axum Router with two GET routes (plain + path param) behind serve_cgi."
+description = "Marty example 02_routing: sync marty::Router with two GET routes (plain + path param)."
 
 [dependencies]
-axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
