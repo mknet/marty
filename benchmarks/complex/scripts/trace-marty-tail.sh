@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Capture strace for marty-complex CGI children and summarize slowest children.
+# Capture strace for marty-sync CGI children and summarize slowest children.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -49,7 +49,7 @@ ensure_stack() {
     stop_docker_on_port "$port"
     dc up -d
   fi
-  wait_ready "${BASE}/cgi-bin/marty-complex/primes/10000?salt=0"
+  wait_ready "${BASE}/cgi-bin/marty-sync/primes/10000?salt=0"
 }
 
 start_strace() {
@@ -123,7 +123,7 @@ def ts_to_us(match):
 
 for path in root.glob("trace.*"):
     text = path.read_text(errors="replace")
-    if "marty-complex" not in text:
+    if "marty-sync" not in text:
         continue
     stamps = [ts_to_us(m) for m in time_re.finditer(text)]
     if not stamps:
@@ -132,10 +132,10 @@ for path in root.glob("trace.*"):
     rows.append((stamps[-1] - stamps[0], syscall_us, path.name, len(text.splitlines())))
 
 if not rows:
-    print("No marty-complex child traces found. Rebuild the image so strace is installed and SYS_PTRACE is enabled.")
+    print("No marty-sync child traces found. Rebuild the image so strace is installed and SYS_PTRACE is enabled.")
     raise SystemExit(0)
 
-print("Slowest marty-complex traced children:")
+print("Slowest marty-sync traced children:")
 print(f"{'wall_ms':>10} {'syscall_ms':>12} {'lines':>8} file")
 for wall_us, syscall_us, name, lines in sorted(rows, reverse=True)[:10]:
     print(f"{wall_us / 1000:10.2f} {syscall_us / 1000:12.2f} {lines:8d} {name}")
@@ -157,8 +157,8 @@ main() {
   fi
 
   start_strace "$cid"
-  echo ">> hey ${N} requests, concurrency ${C}: ${BASE}/cgi-bin/marty-complex/${ROUTE}"
-  run_hey_with_timeout "${BASE}/cgi-bin/marty-complex/${ROUTE}" || true
+  echo ">> hey ${N} requests, concurrency ${C}: ${BASE}/cgi-bin/marty-sync/${ROUTE}"
+  run_hey_with_timeout "${BASE}/cgi-bin/marty-sync/${ROUTE}" || true
   stop_strace "$cid"
   copy_traces "$cid"
   summarize_traces

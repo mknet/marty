@@ -26,7 +26,7 @@ const (
 	defaultMatrixSize = 128
 	maxPrimeLimit     = 1_000_000
 	maxFibN           = 50
-	maxMatrixSize     = 200
+	maxMatrixSize     = 400
 	saltModPrime      = 5_000
 	saltModMatrix     = 16
 	fibSeed           = 42

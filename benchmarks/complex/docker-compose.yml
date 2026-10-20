@@ -11,13 +11,10 @@ services:
         MARTY_RUSTFLAGS: "${MARTY_RUSTFLAGS:-}"
         MARTY_TARGET_CPU: "${MARTY_TARGET_CPU:-}"
         MARTY_PGO_PROFILE: "${MARTY_PGO_PROFILE:-}"
-        # Extra cargo flags for marty-complex, e.g. "--no-default-features" (no apache-cgi-pacing).
-        MARTY_CARGO_FLAGS: "${MARTY_CARGO_FLAGS:-}"
     ports:
       - "${BENCH_PORT:-8081}:80"
     environment:
       BENCH_TIMING: "${BENCH_TIMING:-1}"
-      MARTY_COMPLEX_SPLIT_RESPONSE: "${MARTY_COMPLEX_SPLIT_RESPONSE:-0}"
       GO_COMPLEX_RAW_CGI: "${GO_COMPLEX_RAW_CGI:-0}"
       LLVM_PROFILE_FILE: "${LLVM_PROFILE_FILE:-/tmp/marty-pgo/marty-%p-%m.profraw}"
     cap_add:

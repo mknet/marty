@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$HERE/docker-compose.yml"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-marty-bench-complex}"
 BASE="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
-PROBE_URL="${BASE}/cgi-bin/marty-complex/primes/10000?salt=0"
+PROBE_URL="${BASE}/cgi-bin/marty-sync/primes/10000?salt=0"
 N="${BENCH_REQUESTS:-2000}"
 C="${BENCH_CONCURRENCY:-10}"
 PAUSE="${BENCH_PAUSE_SEC:-1}"
@@ -14,7 +14,6 @@ RUNS="${BENCH_RUNS:-1}"
 BENCH_TIMING="${BENCH_TIMING:-1}"
 WARMUP_N="${BENCH_WARMUP_REQUESTS:-0}"
 BENCH_LANGS="${BENCH_LANGS:-marty go python php}"
-MARTY_COMPLEX_SPLIT_RESPONSE="${MARTY_COMPLEX_SPLIT_RESPONSE:-0}"
 GO_COMPLEX_RAW_CGI="${GO_COMPLEX_RAW_CGI:-0}"
 # Dockerfile selection (compose interpolates it): default prefork/mod_cgi/mod_php image,
 # or docker/Dockerfile.hosting for the hosting-like mpm_event/mod_cgid/suexec/php-fpm image.
@@ -58,11 +57,10 @@ start_stack() {
   port="$(bench_host_port "$BASE")"
   export BENCH_PORT="$port"
   export BENCH_TIMING
-  export MARTY_COMPLEX_SPLIT_RESPONSE
   export GO_COMPLEX_RAW_CGI
   stop_docker_on_port "$port"
   dc down --remove-orphans 2>/dev/null || true
-  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port}, BENCH_TIMING=${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE=${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
+  echo ">> docker compose up -d (project ${COMPOSE_PROJECT_NAME}, host :${port}, BENCH_TIMING=${BENCH_TIMING}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
   dc up -d
 }
 
@@ -70,7 +68,6 @@ ensure_apache() {
   cd "$HERE"
   export BENCH_PORT="$(bench_host_port "$BASE")"
   export BENCH_TIMING
-  export MARTY_COMPLEX_SPLIT_RESPONSE
   export GO_COMPLEX_RAW_CGI
 
   if [[ "${BENCH_REBUILD:-0}" == "1" ]]; then
@@ -84,24 +81,22 @@ ensure_apache() {
   local need_recreate=0
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]]; then
     local cur_timing
-    local cur_marty_split
     local cur_go_raw_cgi
     cur_timing="$(dc exec -T bench printenv BENCH_TIMING 2>/dev/null || true)"
-    cur_marty_split="$(dc exec -T bench printenv MARTY_COMPLEX_SPLIT_RESPONSE 2>/dev/null || true)"
     cur_go_raw_cgi="$(dc exec -T bench printenv GO_COMPLEX_RAW_CGI 2>/dev/null || true)"
-    if [[ "${cur_timing:-}" != "${BENCH_TIMING}" ]] || [[ "${cur_marty_split:-}" != "${MARTY_COMPLEX_SPLIT_RESPONSE}" ]] || [[ "${cur_go_raw_cgi:-}" != "${GO_COMPLEX_RAW_CGI}" ]]; then
+    if [[ "${cur_timing:-}" != "${BENCH_TIMING}" ]] || [[ "${cur_go_raw_cgi:-}" != "${GO_COMPLEX_RAW_CGI}" ]]; then
       need_recreate=1
     fi
   fi
 
   if [[ "$need_recreate" == "1" ]]; then
-    echo ">> container env changed (BENCH_TIMING ${cur_timing:-unset} -> ${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE ${cur_marty_split:-unset} -> ${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI ${cur_go_raw_cgi:-unset} -> ${GO_COMPLEX_RAW_CGI}), recreating container"
+    echo ">> container env changed (BENCH_TIMING ${cur_timing:-unset} -> ${BENCH_TIMING}, GO_COMPLEX_RAW_CGI ${cur_go_raw_cgi:-unset} -> ${GO_COMPLEX_RAW_CGI}), recreating container"
     start_stack
     return
   fi
 
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]] && curl -sf -o /dev/null -m 5 "$PROBE_URL"; then
-    echo ">> reusing running complex bench container on ${BASE} (probe ok, BENCH_TIMING=${BENCH_TIMING}, MARTY_COMPLEX_SPLIT_RESPONSE=${MARTY_COMPLEX_SPLIT_RESPONSE}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
+    echo ">> reusing running complex bench container on ${BASE} (probe ok, BENCH_TIMING=${BENCH_TIMING}, GO_COMPLEX_RAW_CGI=${GO_COMPLEX_RAW_CGI})"
     return
   fi
 
@@ -122,9 +117,9 @@ ensure_apache() {
 
 # label|url
 TARGETS=(
-  "marty /primes|${BASE}/cgi-bin/marty-complex/primes/${PRIME_LIMIT}"
-  "marty /fibonacci|${BASE}/cgi-bin/marty-complex/fibonacci/${FIB_N}"
-  "marty /matrix|${BASE}/cgi-bin/marty-complex/matrix/${MATRIX_SIZE}"
+  "marty /primes|${BASE}/cgi-bin/marty-sync/primes/${PRIME_LIMIT}"
+  "marty /fibonacci|${BASE}/cgi-bin/marty-sync/fibonacci/${FIB_N}"
+  "marty /matrix|${BASE}/cgi-bin/marty-sync/matrix/${MATRIX_SIZE}"
   "go /primes|${BASE}/cgi-bin/go-complex/primes/${PRIME_LIMIT}"
   "go /fibonacci|${BASE}/cgi-bin/go-complex/fibonacci/${FIB_N}"
   "go /matrix|${BASE}/cgi-bin/go-complex/matrix/${MATRIX_SIZE}"
@@ -271,7 +266,7 @@ bench_timing_key() {
   route="${label#* }"
   route="${route#/}"
   case "$lang" in
-    marty) echo "marty-complex ${route}" ;;
+    marty) echo "marty-sync ${route}" ;;
     go) echo "go-complex ${route}" ;;
     python) echo "python-complex ${route}" ;;
     php) echo "php-complex ${route}" ;;
@@ -385,7 +380,6 @@ fi
 echo "  Runs:       $RUNS per target (median when > 1)"
 echo "  Between:    ${PAUSE}s pause, no container restart"
 echo "  BENCH_TIMING: ${timing_mode}"
-echo "  MARTY_COMPLEX_SPLIT_RESPONSE: ${MARTY_COMPLEX_SPLIT_RESPONSE}"
 echo "  GO_COMPLEX_RAW_CGI: ${GO_COMPLEX_RAW_CGI}"
 echo
 

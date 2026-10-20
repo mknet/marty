@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a Docker benchmark image with Rust PGO for marty-complex.
+# Build a Docker benchmark image with Rust PGO for marty-sync.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -71,12 +71,12 @@ run_training() {
   local url
   echo ">> docker compose up -d (instrumented image)"
   dc up -d --force-recreate
-  wait_ready "${BASE}/cgi-bin/marty-complex/primes/10000?salt=0"
+  wait_ready "${BASE}/cgi-bin/marty-sync/primes/10000?salt=0"
 
   for url in \
-    "${BASE}/cgi-bin/marty-complex/primes/${BENCH_PRIME_LIMIT:-400000}" \
-    "${BASE}/cgi-bin/marty-complex/fibonacci/${BENCH_FIB_N:-42}" \
-    "${BASE}/cgi-bin/marty-complex/matrix/${BENCH_MATRIX_SIZE:-128}"
+    "${BASE}/cgi-bin/marty-sync/primes/${BENCH_PRIME_LIMIT:-400000}" \
+    "${BASE}/cgi-bin/marty-sync/fibonacci/${BENCH_FIB_N:-42}" \
+    "${BASE}/cgi-bin/marty-sync/matrix/${BENCH_MATRIX_SIZE:-128}"
   do
     echo ">> PGO train ${url}"
     hey -n "$PGO_REQUESTS" -c "$PGO_CONCURRENCY" -m GET "$url" >/dev/null

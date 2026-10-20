@@ -18,11 +18,11 @@ fi
 if [[ -n "$rustflags" ]]; then
   echo "RUSTFLAGS=${rustflags}"
 fi
-CARGO_INCREMENTAL=0 RUSTFLAGS="$rustflags" cargo build -p marty-complex-bench --profile bench
+CARGO_INCREMENTAL=0 RUSTFLAGS="$rustflags" cargo build -p marty-sync --profile bench
 T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 
-cp -f "$T/release/marty-complex-bench" "$CGI/marty-complex"
-chmod +x "$CGI/marty-complex"
+cp -f "$T/release/marty-sync" "$CGI/marty-sync"
+chmod +x "$CGI/marty-sync"
 
 (
   cd "$HERE/go-complex"

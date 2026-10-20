@@ -1,0 +1,15 @@
+[package]
+name = "marty-sync"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Complex bench: sync marty::Router CGI (Docker fair + shared-host upload)."
+
+[[bin]]
+name = "marty-sync"
+path = "src/main.rs"
+
+[dependencies]
+marty = { path = "../../../marty", default-features = false, features = ["sync-cgi"] }
+marty-bench-shared = { path = "../shared" }

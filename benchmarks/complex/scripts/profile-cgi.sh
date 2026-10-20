@@ -7,7 +7,7 @@ BASE="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
 ROUTE="${PROFILE_ROUTE:-fibonacci/42}"
 
 handlers=(
-  "marty-complex"
+  "marty-sync"
   "go-complex"
   "python-complex"
   "php"

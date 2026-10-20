@@ -23,13 +23,13 @@ build_binaries() {
   if [[ -n "$rustflags" ]]; then
     echo ">> Rust RUSTFLAGS=${rustflags}"
   fi
-  echo ">> building Rust marty-complex-bench"
-  CARGO_INCREMENTAL=0 RUSTFLAGS="$rustflags" cargo build -p marty-complex-bench --profile bench
+  echo ">> building Rust marty-sync"
+  CARGO_INCREMENTAL=0 RUSTFLAGS="$rustflags" cargo build -p marty-sync --profile bench
 
   local target_dir
   target_dir="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-  cp -f "$target_dir/release/marty-complex-bench" "$BIN_DIR/marty-complex"
-  chmod +x "$BIN_DIR/marty-complex"
+  cp -f "$target_dir/release/marty-sync" "$BIN_DIR/marty-sync"
+  chmod +x "$BIN_DIR/marty-sync"
 
   echo ">> building Go go-complex"
   (
@@ -53,7 +53,7 @@ warmup = int(sys.argv[3])
 routes = sys.argv[4:]
 
 handlers = [
-    ("marty", os.path.join(bin_dir, "marty-complex")),
+    ("marty", os.path.join(bin_dir, "marty-sync")),
     ("go", os.path.join(bin_dir, "go-complex")),
 ]
 
