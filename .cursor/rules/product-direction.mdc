@@ -1,0 +1,15 @@
+---
+description: Marty product direction — shared hosting, sync-first, Axum optional
+alwaysApply: true
+---
+
+# Product direction
+
+Read [`docs/DIRECTION.md`](docs/DIRECTION.md), [`docs/CGI-VARIANTS.md`](docs/CGI-VARIANTS.md), [`docs/COST.md`](docs/COST.md).
+
+- **Target:** shared hosting CGI (upload one static binary), not VPS/long-lived servers.
+- **Default:** `sync-cgi` / `marty::Router`. Prefer this for new examples, APIs, and docs.
+- **Axum/`tower`:** optional for existing Axum handlers via `serve_cgi` — not the primary DX; do not aim for Axum feature parity in the sync router.
+- **CGI variants:** document + Docker-mirror (hosting-like first, prefork as lab); do not reintroduce prefork-only library hacks (e.g. pacing).
+- **Claims about hosting:** prefer `benchmarks/complex` (`just outside` / hosting Docker) + `tools/hosting-probe`; do not treat prefork-only benches as all-inkl truth.
+- **Planned:** `.htaccess` generation from routes; keep templates until then.
