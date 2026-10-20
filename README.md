@@ -32,12 +32,15 @@ Smallest binary, no Tokio. Feature **`sync-cgi`** (disable default features if y
 use marty::Router;
 
 fn main() {
-    let mut router = Router::new();
-    router.get("/", |_| "Hello, World!\n");
-    router.get("/hello/{name}", |req| {
+    let mut api = Router::new();
+    api.get("/hello/{name}", |req| {
         let name = req.param("name").unwrap_or("world");
         format!("Hello, {name}!\n")
     });
+
+    let mut router = Router::new();
+    router.get("/", |_| "Hello, World!\n");
+    router.nest("/api", api);
     router.get("/static/{*path}", |req| {
         format!("file {}\n", req.param("path").unwrap_or(""))
     });

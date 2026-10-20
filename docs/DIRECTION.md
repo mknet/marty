@@ -17,7 +17,7 @@ Rust for web **without** a VPS: build a static CGI binary, upload to shared host
 | Primary target | Shared hosting — Apache **event/worker + mod_cgid + suexec** ([variants](CGI-VARIANTS.md)) |
 | Recommended stack | **`sync-cgi`** — `marty::Router`, sync handlers, smallest binary |
 | Axum / `tower` | **Optional escape hatch** for existing Axum handlers via `serve_cgi` |
-| Sync router scope | Thin CGI DX: methods, `{param}` / `{*catch_all}`, fallback, `SCRIPT_NAME` strip — **not** Axum extractor/middleware parity |
+| Sync router scope | Thin CGI DX: methods, `{param}` / `{*catch_all}`, `nest`/`merge`, fallback, `SCRIPT_NAME` strip — **not** Axum extractor/middleware parity |
 | Apache quirks | Document & mirror in Docker; **do not** grow library hacks for prefork-only issues (e.g. pacing was removed) |
 
 New examples/docs prefer sync (`examples/02_routing`). Optional Axum: `examples/06_axum`.
