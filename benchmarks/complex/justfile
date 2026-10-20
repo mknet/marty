@@ -114,6 +114,34 @@ bench-fair-stable: ensure-hey
     export BENCH_WARMUP_REQUESTS="${BENCH_WARMUP_REQUESTS:-0}"
     bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
 
+# Hosting-like Apache (mpm_event + mod_cgid + suexec + php-fpm, Ubuntu 24.04) as reported by
+# tools/hosting-probe for all-inkl.com. Separate compose project so both images can coexist.
+# suexec strips BENCH_TIMING from the CGI env, so the Startup column stays n/a here.
+bench-fair-hosting: ensure-hey
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
+    export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-marty-bench-complex-hosting}"
+    export BENCH_DOCKERFILE="benchmarks/complex/docker/Dockerfile.hosting"
+    export BENCH_REQUESTS="${BENCH_REQUESTS:-2000}"
+    export BENCH_BASE_URL="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    export BENCH_TIMING=0
+    export BENCH_RUNS="${BENCH_RUNS:-3}"
+    export BENCH_WARMUP_REQUESTS="${BENCH_WARMUP_REQUESTS:-0}"
+    bash "{{ justfile_directory() }}/scripts/run-bench-fair.sh"
+
+docker-smoke-hosting: setup
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    export BENCH_DOCKERFILE="benchmarks/complex/docker/Dockerfile.hosting"
+    export BENCH_TIMING=0
+    bash "$HERE/scripts/docker-down.sh"
+    docker compose -p marty-bench-complex-hosting -f "$HERE/docker-compose.yml" up -d --build
+    BASE="${BENCH_BASE_URL:-http://127.0.0.1:8081}"
+    hurl --no-output --variable "base_url=${BASE}" --retry 50 "$HERE/smoke.hurl"
+    echo "docker smoke ok (hosting-like: marty, go, python, php)"
+
 bench-fair-rust-go-stable: ensure-hey
     #!/usr/bin/env bash
     set -euo pipefail

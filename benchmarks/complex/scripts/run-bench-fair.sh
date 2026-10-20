@@ -16,6 +16,10 @@ WARMUP_N="${BENCH_WARMUP_REQUESTS:-0}"
 BENCH_LANGS="${BENCH_LANGS:-marty go python php}"
 MARTY_COMPLEX_SPLIT_RESPONSE="${MARTY_COMPLEX_SPLIT_RESPONSE:-0}"
 GO_COMPLEX_RAW_CGI="${GO_COMPLEX_RAW_CGI:-0}"
+# Dockerfile selection (compose interpolates it): default prefork/mod_cgi/mod_php image,
+# or docker/Dockerfile.hosting for the hosting-like mpm_event/mod_cgid/suexec/php-fpm image.
+BENCH_DOCKERFILE="${BENCH_DOCKERFILE:-benchmarks/complex/docker/Dockerfile}"
+export BENCH_DOCKERFILE
 
 # shellcheck source=../../simple/scripts/ensure-hey.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../simple/scripts/ensure-hey.sh"
@@ -366,7 +370,12 @@ fi
 
 echo
 echo "Fair complex benchmark (CPU routes)"
-echo "  Server:     Apache in Docker (CGI + mod_php), port default 8081"
+if [[ "$BENCH_DOCKERFILE" == *hosting* ]]; then
+  echo "  Server:     Apache in Docker, hosting-like (mpm_event + mod_cgid + suexec + php-fpm)"
+else
+  echo "  Server:     Apache in Docker (prefork + mod_cgi + mod_php), port default 8081"
+fi
+echo "  Dockerfile: ${BENCH_DOCKERFILE} (project ${COMPOSE_PROJECT_NAME})"
 echo "  Workloads:  primes/${PRIME_LIMIT} (sieve), fibonacci/${FIB_N}, matrix/${MATRIX_SIZE}"
 echo "  Handlers:   ${BENCH_LANGS}"
 echo "  Requests:   $N per (handler × route), concurrency $C (hey)"
