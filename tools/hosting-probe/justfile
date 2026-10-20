@@ -1,0 +1,36 @@
+# Hosting probe — read-only CGI probes to mirror a shared-hosting Apache locally.
+# From this directory: `just linux` (x86_64 musl) or `just linux arm` (aarch64 musl).
+# Output: dist/marty-hosting-probe (+ probe.pl, probe-outside.sh copied next to it).
+
+default:
+    @just --list
+
+# Static Linux binary via the shared root recipe (`_linux_musl`), staged into dist/.
+linux arch="x86_64":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    case "{{ arch }}" in
+      x86_64|"") TRIPLE="x86_64-unknown-linux-musl" ;;
+      arm|aarch64) TRIPLE="aarch64-unknown-linux-musl" ;;
+      *) echo "unsupported arch: {{ arch }} (use x86_64 or arm)" >&2; exit 1 ;;
+    esac
+    just -f "$ROOT/justfile" _linux_musl marty-hosting-probe "$TRIPLE"
+    mkdir -p "$HERE/dist"
+    install -m0755 "$ROOT/target/$TRIPLE/release/marty-hosting-probe" "$HERE/dist/marty-hosting-probe"
+    install -m0755 "$HERE/probe.pl" "$HERE/dist/probe.pl"
+    install -m0755 "$HERE/probe-outside.sh" "$HERE/dist/probe-outside.sh"
+    echo "staged: $HERE/dist/ (upload marty-hosting-probe and probe.pl into cgi-bin, chmod 755)"
+
+# Run the Rust probe locally as a plain process (no Apache) to eyeball the output.
+run-local:
+    cargo run -q -p marty-hosting-probe
+
+# Run the Perl probe locally as a plain process.
+run-local-perl:
+    perl "{{ justfile_directory() }}/probe.pl"
+
+# Outside view against a deployed probe URL (low volume, sequential).
+outside url:
+    bash "{{ justfile_directory() }}/probe-outside.sh" "{{ url }}"
