@@ -1,5 +1,7 @@
 # Complex benchmark — result snapshots
 
+> **Note (2026-10):** The Rust CGI binary/crate was renamed from `marty-complex` / `marty-complex-bench` to **`marty-sync`**. Historical runs below still say `marty-complex`.
+
 Saved from terminal runs on the complex fair bench (Apache Docker, port 8081, 2000 requests per handler×route, concurrency 10).
 
 Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
@@ -24,8 +26,12 @@ PHP via php-fpm, `KeepAlive On`. Run with `just bench-fair-hosting`
 (separate compose project `marty-bench-complex-hosting`). suexec strips
 `BENCH_TIMING`, so the Startup column is n/a in this mode.
 
-`just bench-fair-hosting` — 2000 requests × 3 runs (median), C=10, all handlers,
-`marty-complex` with `apache-cgi-pacing` (crate default):
+The optional library feature `apache-cgi-pacing` was later **removed** from
+`marty`; the single-`write()` path is the only CGI stdout behavior. Prefer the
+**pacing off** column in the A/B section below for comparisons with current code.
+
+Historical capture — 2000 requests × 3 runs (median), C=10, all handlers,
+`marty-complex` **with** the since-removed pacing feature:
 
 | Handler          | Avg   | P50   | P95   | P99   | req/s   |
 |------------------|-------|-------|-------|-------|---------|
@@ -46,12 +52,11 @@ PHP via php-fpm, `KeepAlive On`. Run with `just bench-fair-hosting`
 ~20 ms fixed penalty on every compiled handler — Go `/primes` at 345 req/s —
 which did not reproduce in any later run; treat it as host noise.)
 
-### A/B: `apache-cgi-pacing` on the hosting-like stack
+### A/B: since-removed `apache-cgi-pacing` on the hosting-like stack
 
 Back-to-back, same session, `BENCH_LANGS="marty go"`, Go as the control
 (2707 → 2763 req/s between the two builds, i.e. ~2 % drift).
-`MARTY_CARGO_FLAGS="--no-default-features"` builds `marty-complex` without the
-feature:
+"Off" is the path current `marty` still uses:
 
 | Handler          | Pacing | Avg | P50 | P95  | P99  | req/s   |
 |------------------|--------|-----|-----|------|------|---------|
@@ -72,35 +77,27 @@ feature:
   P99. The single-`write()` response is simply the cheapest thing a CGI can do
   when the reader is the cgid daemon on a unix socket instead of a prefork
   worker on a pipe.
-- **`apache-cgi-pacing` costs 6–22 % here** (most on the shortest responses)
-  and worsens P99. The feature is a prefork/`mod_cgi` workaround; do **not**
-  enable it for all-inkl-like deployments. The library default (feature off,
-  one write) is the right one for this hosting.
+- Pacing cost 6–22 % here and worsened P99 — that justified removing the
+  feature rather than keeping it as an opt-in for prefork-only hosts.
 - Both stacks together explain the earlier confusion: Go was never "faster at
   CGI", it was accidentally well-paced for prefork. Absolute numbers on the
   event/cgid stack are 2–3× higher for every compiled handler than on prefork.
 
 ## Run L — Marty "go-like" output (split header/body with micro-sleep) (2026-05-27)
 
-**Confirms the Apache prefork synchronization hypothesis.** With Marty's normal
-single-`write()` response, Apache `mod_cgi` reads the entire CGI document in one
-`read()` and delivers it as a single `Content-Length` segment. The library now
-exposes `CgiResponse::write_response_to_stdout_paced(delay)`, which splits
-the response into header- and body-phase writes separated by `sleep_us`
-microseconds, so that Apache observes two distinct reads from the CGI pipe —
-mirroring what Go's `bufio.Writer` emits naturally and (in our setup) causing
-Apache to switch the HTTP response to `Transfer-Encoding: chunked`.
+**Confirmed the Apache prefork synchronization hypothesis (historical).** With
+Marty's normal single-`write()` response, Apache `mod_cgi` reads the entire CGI
+document in one `read()` and delivers it as a single `Content-Length` segment.
+A temporary paced path (split header/body writes with a micro-sleep) made
+Apache observe two pipe reads — mirroring what Go's `bufio.Writer` emits
+naturally and (in our setup) causing Apache to switch to
+`Transfer-Encoding: chunked`.
 
 These measurements were originally captured with a temporary runtime switch
-that also spawned 3 short-lived warm-up threads to imitate Go's per-request
-`clone()` pattern. That benchmark switch has since been removed: current
-`marty-complex` enables the library feature `apache-cgi-pacing`, so the default
-`CgiResponse::write_response_to_stdout()` path handles Apache pacing at compile
-time and does not spawn diagnostic threads.
-
-Historical diagnostic command used an environment-controlled sleep value; the
-current equivalent is `BENCH_REBUILD=1 BENCH_TIMING=0 BENCH_LANGS="marty go" bash scripts/run-bench-fair.sh`
-with `marty-complex` compiled against `marty` feature `apache-cgi-pacing`.
+that also spawned 3 short-lived warm-up threads. That switch, and later the
+`apache-cgi-pacing` library feature, were removed: current `marty` keeps only
+the single-`write()` stdout path (see Run M — pacing hurt on the hosting-like
+stack that matches the target deployment).
 
 | Handler          | Mode          | Avg  | P50  | P95   | P99   | req/s   |
 |------------------|---------------|------|------|-------|-------|---------|
@@ -139,10 +136,10 @@ with `marty-complex` compiled against `marty` feature `apache-cgi-pacing`.
   response into two reads spreads them out — exactly what Go does
   unintentionally.
 
-This validates the diagnosis from Run K's follow-ups: Marty isn't slow in
-Apache — Marty is **too fast and too synchronous** for the Apache prefork pool
-on short routes, and the fix lives in the I/O pacing of the CGI library, not
-in the application.
+This validated the diagnosis from Run K's follow-ups for **prefork** Apache:
+Marty isn't slow — it was too fast and too synchronous for that worker pool on
+short routes. On the hosting-like event/cgid stack (Run M) the same
+single-write path is the winner, so the temporary pacing API was removed.
 
 ## Run K — Marty single-write stdout (2026-05-26)
 

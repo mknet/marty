@@ -19,10 +19,10 @@ After `BENCH_REBUILD=1`, the bench script **recreates** the container (old image
 
 OPcache still caches PHP **bytecode** between requests; that is not HTTP/result caching.
 
-CGI examples: `/cgi-bin/marty-complex/primes/400000`  
+CGI examples: `/cgi-bin/marty-sync/primes/400000`  
 PHP (mod_php): `/php/complex.php/primes/400000`
 
-All four implementations use the **same algorithms** (see `marty-complex/src/compute.rs`). Compute code is intentionally shared across languages; micro-optimizing only Rust would break cross-language fairness.
+Rust algorithms live in `shared/` (`marty-bench-shared`); Go/Python/PHP keep language-local copies of the **same** algorithms for fairness.
 
 ## Quick start
 
@@ -95,38 +95,50 @@ Defaults: `2000` direct process invocations per handler × route, `20` warm-up i
 
 ## Performance expectations (CGI)
 
-Each request = **new process** (`fork` + `exec`). **marty-complex** is a standalone sync CGI binary (`PATH_INFO` dispatch, hand-written JSON, no hyper/serde in the bench crate). Go uses `net/http/cgi` + chi. PHP uses **mod_php** (no per-request fork) — not apples-to-apples with CGI for latency.
+Each request = **new process** (`fork` + `exec`). **marty-sync** is a standalone sync CGI binary (`PATH_INFO` dispatch, hand-written JSON, no hyper/serde in the bench crate). Go uses `net/http/cgi` + chi. PHP uses **mod_php** (no per-request fork) — not apples-to-apples with CGI for latency.
 
-After the Go-parity pass and the CGI stdout fixes (see **Run K/L** in [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md)), Marty has two output modes: the default library path emits exactly **one `write()` syscall per CGI response** (status + headers + body in one combined buffer written through the raw stdout fd, bypassing Rust's `LineWriter`), while the optional `apache-cgi-pacing` feature splits headers and body with a tiny delay to improve Apache `mod_cgi`/prefork P95/P99 behavior on very short concurrent requests. The complex bench crate enables `apache-cgi-pacing` by default (its own `default` feature) so the prefork reference numbers stay comparable; build without it via `MARTY_CARGO_FLAGS="--no-default-features"`. Crates that do not enable the feature keep the fastest single-write behavior. Rust PGO + `target-cpu=native` are optional throughput boosters layered on top.
+After the Go-parity pass and the CGI stdout fixes (see **Run K/L** in [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md)), Marty's library path emits exactly **one `write()` syscall per CGI response** (status + headers + body in one combined buffer written through the raw stdout fd, bypassing Rust's `LineWriter`). An experimental Apache prefork pacing feature was measured and later removed; the single-write path is the only library behavior. Rust PGO + `target-cpu=native` are optional throughput boosters layered on top.
 
 ## Hosting-like Apache (mpm_event + mod_cgid + suexec)
 
-The default image (prefork + `mod_cgi` + mod_php) is the historical reference, but it is **not** what shared hosters run. [`tools/hosting-probe/`](../../tools/hosting-probe/) reported for all-inkl.com: Ubuntu 24.04 / Apache 2.4.58, `mod_cgid` (CGI stdio are unix sockets ⇒ threaded MPM), CGIs executed as the site user via suexec with a cleaned environment, KeepAlive on, chunked responses, HTTP/2 over TLS. `docker/Dockerfile.hosting` mirrors that stack (PHP via php-fpm, CGIs owned by and run as user `site`):
+Variant map (hosting-like vs prefork, what we mirror, what we don’t fix in-library): [`docs/CGI-VARIANTS.md`](../../docs/CGI-VARIANTS.md).
+
+The default image (prefork + `mod_cgi` + mod_php) is the historical / lab reference, but it is **not** what shared hosters run. [`tools/hosting-probe/`](../../tools/hosting-probe/) reported for all-inkl.com: Ubuntu 24.04 / Apache 2.4.58, `mod_cgid` (CGI stdio are unix sockets ⇒ threaded MPM), CGIs executed as the site user via suexec with a cleaned environment, KeepAlive on, chunked responses, HTTP/2 over TLS. `docker/Dockerfile.hosting` mirrors that stack (PHP via php-fpm, CGIs owned by and run as user `site`):
 
 ```bash
 just docker-smoke-hosting          # build + smoke the hosting-like image
 just bench-fair-hosting            # 3 runs, all handlers, separate compose project
-MARTY_CARGO_FLAGS="--no-default-features" BENCH_REBUILD=1 BENCH_LANGS="marty go" just bench-fair-hosting
 ```
 
-Results in **Run M** of [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md): on this stack Marty beats Go on every route, and `apache-cgi-pacing` *costs* 6–22 % — leave the feature off for such deployments. suexec drops `BENCH_TIMING` and the other `PassEnv` toggles from the CGI environment (only CGI/1.1, `HTTP_*`, `SSL_*` survive), so the Startup column is n/a and `.htaccess`-`SetEnv` cannot be used to configure CGIs on such hosts either. TLS/h2 are not mirrored yet.
+Results in **Run M** of [`RESULTS-SNAPSHOTS.md`](RESULTS-SNAPSHOTS.md): on this stack Marty beats Go on every route with the single-write CGI path. suexec drops `BENCH_TIMING` and the other `PassEnv` toggles from the CGI environment (only CGI/1.1, `HTTP_*`, `SSL_*` survive), so the Startup column is n/a and `.htaccess`-`SetEnv` cannot be used to configure CGIs on such hosts either. TLS/h2 are not mirrored yet.
+
+### Shared-host upload + outside compare
+
+```bash
+just linux                              # → dist/marty-sync, dist/marty-axum, dist/php/
+# upload, then:
+just outside https://your-host.example
+just outside-extreme https://your-host.example
+```
+
+Host fingerprint (not load): [`tools/hosting-probe/`](../../tools/hosting-probe/).
 
 The Rust-only primes optimization keeps the same Sieve of Eratosthenes algorithm but uses an explicit `Vec<u8>` composite array and a direct marking loop, which is a better hot-loop shape for Rust/LLVM. Go/Python/PHP were not changed for Run F.
 
 **Important Apache config:** `docker/apache-bench.conf` sets `KeepAlive Off`. Marty's small responses (Content-Length + ~150 bytes) otherwise fit into a single TCP segment, which triggers Linux client-side TCP delayed-ACK (~40 ms) on every reply — Go's `Transfer-Encoding: chunked` happens to avoid this because it emits multiple segments. Disabling KeepAlive removes that artifact and produces an apples-to-apples bench.
 
-**Build marty-complex locally (native):**
+**Build marty-sync locally (native):**
 
 ```bash
-cargo build -p marty-complex-bench --profile bench
+cargo build -p marty-sync --profile bench
 ```
 
-Workspace `[profile.bench]` uses fat LTO (`inherits = "release"`); artifact path is `target/release/marty-complex-bench`.
+Workspace `[profile.bench]` uses fat LTO (`inherits = "release"`); artifact path is `target/release/marty-sync`.
 
-The Docker benchmark builds `marty-complex` for the host Linux musl target (`x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl`) and copies `target/<triple>/release/marty-complex-bench`. Verify with:
+The Docker benchmark builds `marty-sync` for the host Linux musl target (`x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl`) and copies `target/<triple>/release/marty-sync`. Verify with:
 
 ```bash
-docker exec marty-bench-complex-bench-1 ldd /usr/lib/cgi-bin/marty-complex
+docker exec marty-bench-complex-bench-1 ldd /usr/lib/cgi-bin/marty-sync
 ```
 
 Expected: `not a dynamic executable`.
@@ -141,17 +153,21 @@ TRACE_REQUESTS=50 TRACE_ROUTE=fibonacci/42 just trace-marty-tail
 
 `MARTY_TARGET_CPU=native` lets LLVM tune the Rust binary for the Docker build CPU. `bench-fair-pgo` builds an instrumented Marty image, trains it against the three Marty routes, merges `.profraw` into `.pgo/merged.profdata`, then rebuilds with `-Cprofile-use`. `trace-marty-tail` is diagnostic only; it has timeouts because attaching `strace` to Apache workers can perturb the benchmark heavily.
 
-The **`marty`** library exposes feature **`sync-cgi`** (sync [`Router`](../../marty/src/router.rs) without hyper) for small CGI binaries and **`apache-cgi-pacing`** for Apache prefork CGI response pacing. The complex bench intentionally uses this library path so the benchmark reflects `marty` as used by applications, while keeping route compute and JSON encoding explicit for reproducible CPU workloads.
+The **`marty`** library exposes feature **`sync-cgi`** (sync [`Router`](../../marty/src/router.rs) without hyper) for small CGI binaries. The complex bench intentionally uses this library path so the benchmark reflects `marty` as used by applications, while keeping route compute and JSON encoding explicit for reproducible CPU workloads.
 
 ## Layout
 
 ```
 benchmarks/complex/
-  marty-complex/     # Rust standalone sync CGI (PATH_INFO match)
+  shared/            # marty-bench-shared (compute + salt)
+  marty-sync/        # sync marty::Router (+ timing/profile for Docker)
+  marty-axum/        # Axum + serve_cgi (upload A/B)
   go-complex/
   python-complex/
   php/complex.php
-  docker/            # Dockerfile (prefork reference), Dockerfile.hosting (event + cgid + suexec)
-  scripts/
+  upload/php/        # AcceptPathInfo .htaccess for outside PHP
+  docker/            # Dockerfile (prefork), Dockerfile.hosting (event + cgid + suexec)
+  scripts/           # fair bench, compare-outside, …
+  dist/              # just linux output (gitignored)
   smoke.hurl
 ```
