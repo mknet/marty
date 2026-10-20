@@ -236,3 +236,69 @@ diagnose-apache-cgi-parallel: ensure-hey
     set -euo pipefail
     export PATH="${HOME}/go/bin:${GOPATH:-}/bin:${HOME}/.cargo/bin:${PATH}"
     bash "{{ justfile_directory() }}/scripts/diagnose-apache-cgi-parallel.sh"
+
+# --- Shared-host upload (musl) + low-volume outside compare ---
+# Probe (host fingerprint) stays in tools/hosting-probe.
+
+# Static Linux x86_64: marty-sync, marty-axum, php/ → dist/
+linux:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    HERE="{{ justfile_directory() }}"
+    ROOT="$(cd "$HERE/../.." && pwd)"
+    TRIPLE="x86_64-unknown-linux-musl"
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+
+    if ! command -v zig >/dev/null 2>&1; then
+      echo "error: zig not on PATH (brew install zig)" >&2
+      exit 1
+    fi
+    if ! command -v cargo-zigbuild >/dev/null 2>&1; then
+      echo "Installing cargo-zigbuild …"
+      cargo install cargo-zigbuild --locked
+    fi
+
+    rustup target add "$TRIPLE"
+    mkdir -p "$HERE/dist"
+
+    target_dir="${CARGO_TARGET_DIR:-$ROOT/target}"
+
+    for pkg_bin in marty-sync:marty-sync marty-axum:marty-axum; do
+      pkg="${pkg_bin%%:*}"
+      bin="${pkg_bin##*:}"
+      echo ">> $bin (musl)"
+      (cd "$ROOT" && cargo zigbuild -p "$pkg" --release --target "$TRIPLE")
+      SRC="$target_dir/$TRIPLE/release/$bin"
+      if [[ ! -f "$SRC" ]]; then
+        SRC="$ROOT/target/$TRIPLE/release/$bin"
+      fi
+      if [[ ! -f "$SRC" ]]; then
+        echo "error: $bin not found under target/$TRIPLE/release/" >&2
+        exit 1
+      fi
+      install -m0755 "$SRC" "$HERE/dist/$bin"
+    done
+
+    echo ">> php complex.php (+ AcceptPathInfo .htaccess)"
+    mkdir -p "$HERE/dist/php"
+    install -m0644 "$HERE/php/complex.php" "$HERE/dist/php/complex.php"
+    install -m0644 "$HERE/upload/php/.htaccess" "$HERE/dist/php/.htaccess"
+
+    file "$HERE/dist/marty-sync" "$HERE/dist/marty-axum"
+    ls -la "$HERE/dist/" "$HERE/dist/php/"
+    echo
+    echo "Upload:"
+    echo "  dist/marty-sync   → cgi-bin/marty-sync   (chmod 755, FTP binary)"
+    echo "  dist/marty-axum   → cgi-bin/marty-axum"
+    echo "  dist/php/…        → php/ under document root"
+    echo "Smoke: …/cgi-bin/marty-sync/primes/10000?salt=0"
+    echo "Then: just outside https://your-host.example"
+
+outside base_url:
+    bash "{{ justfile_directory() }}/scripts/compare-outside.sh" "{{ base_url }}"
+
+outside-extreme base_url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export BENCH_MODE=extreme
+    bash "{{ justfile_directory() }}/scripts/compare-outside.sh" "{{ base_url }}"

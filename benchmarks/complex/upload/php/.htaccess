@@ -1,0 +1,2 @@
+# Allow /php/complex.php/primes/10000 style PATH_INFO on shared Apache.
+AcceptPathInfo On
