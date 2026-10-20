@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write, stdin};
 use std::mem::ManuallyDrop;
 use std::os::fd::FromRawFd;
+use std::time::Duration;
 
 #[cfg(feature = "hyper-cgi")]
 use bytes::Bytes;
@@ -21,6 +22,14 @@ use hyper::http::HeaderValue;
 const STATUS_200_OK: &[u8] = b"Status: 200 OK\n";
 const JSON_NO_CACHE_HEADERS: &[u8] =
     b"Cache-Control: no-store, no-cache, must-revalidate\nPragma: no-cache\nContent-Type: application/json\n\n";
+/// Default pause used by the `apache-cgi-pacing` feature between header and
+/// body writes.
+///
+/// The value is intentionally small: it is meant to give Apache `mod_cgi` a
+/// chance to observe two pipe-read phases under short concurrent requests, not
+/// to slow application work down. Applications that need a different value can
+/// call [`CgiResponse::write_response_to_stdout_paced`] directly.
+pub const APACHE_CGI_PACING_DELAY_MICROS: u64 = 50;
 
 static REASONS: &[(&str, &str)] = &[
     ("200", "OK"),
@@ -226,15 +235,57 @@ impl CgiResponse {
         write_split(&bytes, &mut output)
     }
 
+    /// Write this response as two phases, with an optional delay between
+    /// headers and body.
+    ///
+    /// This is a CGI server pacing knob, not an application-level performance
+    /// optimization. Apache `mod_cgi` drains the child process stdout through a
+    /// pipe. If a very small CGI program writes the full response and exits in
+    /// one scheduler quantum, Apache can observe the response as a single pipe
+    /// read and many prefork workers can become idle at nearly the same time.
+    /// Under concurrent short requests that can amplify tail latency through
+    /// accept-mutex, logging, and child-reaping contention.
+    ///
+    /// Splitting headers and body, optionally with a tiny delay, gives the CGI
+    /// server a chance to observe separate pipe reads and pace the HTTP
+    /// response more like buffered runtimes do naturally. Leave the delay at
+    /// [`Duration::ZERO`] for a pure split write; use a small non-zero delay
+    /// only after measuring that your CGI server benefits from it.
+    pub fn write_response_to_output_paced(
+        self,
+        mut output: impl Write,
+        header_body_delay: Duration,
+    ) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        write_paced(&bytes, &mut output, header_body_delay)
+    }
+
     /// Write this response to process stdout.
     ///
-    /// This bypasses [`std::io::stdout`]'s `LineWriter`, which can otherwise
-    /// flush once per CGI header newline. Building the full CGI document and
-    /// writing it directly to fd 1 preserves the router API while keeping the
-    /// stdout behavior suitable for small CGI responses under Apache `mod_cgi`.
+    /// Without feature `apache-cgi-pacing`, this bypasses
+    /// [`std::io::stdout`]'s `LineWriter`, which can otherwise flush once per
+    /// CGI header newline. Building the full CGI document and writing it
+    /// directly to fd 1 preserves the router API while keeping the default path
+    /// as a single fast `write()`.
+    ///
+    /// With feature `apache-cgi-pacing`, this method becomes the paced Apache
+    /// CGI path: headers and body are written as separate phases with a tiny
+    /// delay. That trades a few microseconds of per-request latency for better
+    /// P95/P99 behavior on Apache `mod_cgi`/prefork when many very short CGI
+    /// requests finish in the same scheduler quantum.
     pub fn write_response_to_stdout(self) -> Result<()> {
-        let bytes = self.into_cgi_bytes()?;
-        write_stdout_raw(&bytes)
+        #[cfg(feature = "apache-cgi-pacing")]
+        {
+            return self.write_response_to_stdout_paced(Duration::from_micros(
+                APACHE_CGI_PACING_DELAY_MICROS,
+            ));
+        }
+
+        #[cfg(not(feature = "apache-cgi-pacing"))]
+        {
+            let bytes = self.into_cgi_bytes()?;
+            write_stdout_raw(&bytes)
+        }
     }
 
     /// Write this response to stdout as split header/body phases where possible.
@@ -244,6 +295,25 @@ impl CgiResponse {
         let bytes = self.into_cgi_bytes()?;
         if let Some(split_at) = header_body_split(&bytes) {
             write_stdout_raw(&bytes[..split_at])?;
+            write_stdout_raw(&bytes[split_at..])
+        } else {
+            write_stdout_raw(&bytes)
+        }
+    }
+
+    /// Write this response to stdout with CGI server pacing.
+    ///
+    /// See [`Self::write_response_to_output_paced`] for why this exists.
+    /// Normal applications should prefer [`Self::write_response_to_stdout`]
+    /// unless measurements show the deployment CGI server benefits from
+    /// header/body pacing under concurrent short requests.
+    pub fn write_response_to_stdout_paced(self, header_body_delay: Duration) -> Result<()> {
+        let bytes = self.into_cgi_bytes()?;
+        if let Some(split_at) = header_body_split(&bytes) {
+            write_stdout_raw(&bytes[..split_at])?;
+            if !header_body_delay.is_zero() {
+                std::thread::sleep(header_body_delay);
+            }
             write_stdout_raw(&bytes[split_at..])
         } else {
             write_stdout_raw(&bytes)
@@ -299,6 +369,23 @@ fn write_split(bytes: &[u8], output: &mut impl Write) -> Result<()> {
         output
             .write_all(&bytes[..split_at])
             .and_then(|_| output.write_all(&bytes[split_at..]))
+            .context(error::WriteResponseSnafu)?;
+    } else {
+        output.write_all(bytes).context(error::WriteResponseSnafu)?;
+    }
+    Ok(())
+}
+
+fn write_paced(bytes: &[u8], output: &mut impl Write, header_body_delay: Duration) -> Result<()> {
+    if let Some(split_at) = header_body_split(bytes) {
+        output
+            .write_all(&bytes[..split_at])
+            .context(error::WriteResponseSnafu)?;
+        if !header_body_delay.is_zero() {
+            std::thread::sleep(header_body_delay);
+        }
+        output
+            .write_all(&bytes[split_at..])
             .context(error::WriteResponseSnafu)?;
     } else {
         output.write_all(bytes).context(error::WriteResponseSnafu)?;
@@ -446,6 +533,24 @@ mod tests {
 
         CgiResponse::json_no_cache_bytes(b"{}".to_vec())
             .write_response_to_output_split(&mut out)
+            .unwrap();
+
+        assert_eq!(out.writes, 2);
+        assert_eq!(
+            out.bytes,
+            b"Status: 200 OK\nCache-Control: no-store, no-cache, must-revalidate\nPragma: no-cache\nContent-Type: application/json\n\n{}"
+        );
+    }
+
+    #[test]
+    fn json_no_cache_can_pace_header_and_body() {
+        let mut out = CountingWrite {
+            writes: 0,
+            bytes: Vec::new(),
+        };
+
+        CgiResponse::json_no_cache_bytes(b"{}".to_vec())
+            .write_response_to_output_paced(&mut out, Duration::ZERO)
             .unwrap();
 
         assert_eq!(out.writes, 2);
