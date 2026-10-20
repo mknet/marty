@@ -440,8 +440,8 @@ mod tests {
             path_info: path_info.into(),
             query_string: "".into(),
             uri: String::new(),
-            #[cfg(feature = "hyper-cgi")]
-            headers: Default::default(),
+            content_type: String::new(),
+            cookie_header: String::new(),
             body: vec![],
             path_params: HashMap::new(),
         }
@@ -590,33 +590,15 @@ mod tests {
 
     #[test]
     fn relative_path_uses_path_info() {
-        let req = CgiRequest {
-            method: "GET".into(),
-            script_name: "/cgi-bin/prog".into(),
-            path_info: "/hello".into(),
-            query_string: "".into(),
-            uri: String::new(),
-            #[cfg(feature = "hyper-cgi")]
-            headers: Default::default(),
-            body: vec![],
-            path_params: HashMap::new(),
-        };
+        let req = get_req("/hello");
         assert_eq!(relative_path(&req), "/hello");
     }
 
     #[test]
     fn relative_path_strips_script_name() {
-        let req = CgiRequest {
-            method: "GET".into(),
-            script_name: "/cgi-bin/prog".into(),
-            path_info: "".into(),
-            query_string: "".into(),
-            uri: "/cgi-bin/prog/hello".into(),
-            #[cfg(feature = "hyper-cgi")]
-            headers: Default::default(),
-            body: vec![],
-            path_params: HashMap::new(),
-        };
+        let mut req = get_req("");
+        req.path_info.clear();
+        req.uri = "/cgi-bin/app/hello".into();
         assert_eq!(relative_path(&req), "/hello");
     }
 }

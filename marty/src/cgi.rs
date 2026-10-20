@@ -13,10 +13,6 @@ use std::os::fd::FromRawFd;
 
 #[cfg(feature = "hyper-cgi")]
 use bytes::Bytes;
-#[cfg(feature = "hyper-cgi")]
-use hyper::HeaderMap;
-#[cfg(feature = "hyper-cgi")]
-use hyper::http::HeaderValue;
 
 const STATUS_200_OK: &[u8] = b"Status: 200 OK\n";
 const JSON_NO_CACHE_HEADERS: &[u8] =
@@ -45,8 +41,10 @@ pub struct CgiRequest {
     pub query_string: String,
     /// Populated only when needed for routing fallback (no `PATH_INFO`).
     pub uri: String,
-    #[cfg(feature = "hyper-cgi")]
-    pub headers: HeaderMap<HeaderValue>,
+    /// `CONTENT_TYPE` (may be empty).
+    pub content_type: String,
+    /// Raw `HTTP_COOKIE` (may be empty).
+    pub cookie_header: String,
     pub body: Vec<u8>,
     pub path_params: HashMap<String, String>,
 }
@@ -99,8 +97,8 @@ impl CgiRequest {
             path_info,
             query_string,
             uri,
-            #[cfg(feature = "hyper-cgi")]
-            headers: HeaderMap::new(),
+            content_type: crate::form::content_type_from_env(),
+            cookie_header: crate::cookie::cookie_header_from_env(),
             body,
             path_params: HashMap::new(),
         })
@@ -140,8 +138,8 @@ fn build_request_uri(script_name: &str, path_info: &str, query_string: &str) -> 
 /// CGI document response (sync router).
 #[derive(Debug)]
 pub struct CgiResponse {
-    #[cfg(feature = "hyper-cgi")]
-    pub headers: HeaderMap<HeaderValue>,
+    /// Extra CGI headers (`Set-Cookie`, `Content-Type`, …), written before the blank line.
+    pub headers: Vec<(String, String)>,
     pub status: String,
     pub reason: Option<String>,
     #[cfg(feature = "hyper-cgi")]
@@ -155,8 +153,7 @@ pub struct CgiResponse {
 impl CgiResponse {
     pub fn new(status: u16, body: impl AsRef<[u8]>) -> Self {
         Self {
-            #[cfg(feature = "hyper-cgi")]
-            headers: HeaderMap::new(),
+            headers: Vec::new(),
             status: status.to_string(),
             reason: canonical_reason(status).map(str::to_string),
             #[cfg(feature = "hyper-cgi")]
@@ -167,11 +164,15 @@ impl CgiResponse {
         }
     }
 
+    /// `200` with `Content-Type: text/plain; charset=utf-8`.
+    pub fn text(body: impl AsRef<[u8]>) -> Self {
+        Self::new(200, body).header("Content-Type", "text/plain; charset=utf-8")
+    }
+
     /// `200` JSON body with standard no-cache headers (fast write path).
     pub fn json_no_cache(body: impl AsRef<[u8]>) -> Self {
         Self {
-            #[cfg(feature = "hyper-cgi")]
-            headers: HeaderMap::new(),
+            headers: Vec::new(),
             status: "200".into(),
             reason: Some("OK".into()),
             #[cfg(feature = "hyper-cgi")]
@@ -186,8 +187,7 @@ impl CgiResponse {
     /// already-built byte buffer.
     pub fn json_no_cache_bytes(body: Vec<u8>) -> Self {
         Self {
-            #[cfg(feature = "hyper-cgi")]
-            headers: HeaderMap::new(),
+            headers: Vec::new(),
             status: "200".into(),
             reason: Some("OK".into()),
             #[cfg(feature = "hyper-cgi")]
@@ -198,10 +198,10 @@ impl CgiResponse {
         }
     }
 
-    #[cfg(feature = "hyper-cgi")]
-    pub fn with_header(mut self, name: hyper::header::HeaderName, value: HeaderValue) -> Self {
+    /// Append a CGI response header (disables the JSON fast-write path).
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.json_no_cache = false;
-        self.headers.insert(name, value);
+        self.headers.push((name.into(), value.into()));
         self
     }
 
@@ -225,13 +225,8 @@ impl CgiResponse {
     }
 
     fn into_cgi_bytes(self) -> Result<Vec<u8>> {
-        #[cfg(feature = "hyper-cgi")]
-        let headers_empty = self.headers.is_empty();
-        #[cfg(not(feature = "hyper-cgi"))]
-        let headers_empty = true;
-
         let body: &[u8] = self.body.as_ref();
-        if self.json_no_cache && self.status == "200" && headers_empty {
+        if self.json_no_cache && self.status == "200" && self.headers.is_empty() {
             let mut out =
                 Vec::with_capacity(STATUS_200_OK.len() + JSON_NO_CACHE_HEADERS.len() + body.len());
             out.extend_from_slice(STATUS_200_OK);
@@ -248,10 +243,8 @@ impl CgiResponse {
             writeln!(&mut out, "Status: {}", self.status).context(error::WriteResponseSnafu)?;
         }
 
-        #[cfg(feature = "hyper-cgi")]
-        for (key, value) in self.headers.iter() {
-            writeln!(&mut out, "{}: {}", key, value.to_str().unwrap_or(""))
-                .context(error::WriteResponseSnafu)?;
+        for (key, value) in &self.headers {
+            writeln!(&mut out, "{key}: {value}").context(error::WriteResponseSnafu)?;
         }
         out.write_all(b"\n").context(error::WriteResponseSnafu)?;
         out.write_all(body).context(error::WriteResponseSnafu)?;
@@ -306,48 +299,28 @@ impl IntoResponse for CgiResponse {
 
 impl IntoResponse for &'static str {
     fn into_response(self) -> CgiResponse {
-        CgiResponse::new(200, self)
+        CgiResponse::text(self)
     }
 }
 
 impl IntoResponse for String {
     fn into_response(self) -> CgiResponse {
-        CgiResponse::new(200, self)
+        CgiResponse::text(self)
     }
 }
 
 impl IntoResponse for (u16, &'static str) {
     fn into_response(self) -> CgiResponse {
-        CgiResponse::new(self.0, self.1)
+        CgiResponse::new(self.0, self.1).header("Content-Type", "text/plain; charset=utf-8")
     }
 }
 
-#[cfg(feature = "hyper-cgi")]
 impl<const N: usize> IntoResponse for (u16, [(&'static str, &'static str); N], &'static str) {
     fn into_response(self) -> CgiResponse {
         let (status, pairs, body) = self;
         let mut resp = CgiResponse::new(status, body);
         for (name, value) in pairs {
-            if let (Ok(n), Ok(v)) = (
-                hyper::header::HeaderName::from_bytes(name.as_bytes()),
-                HeaderValue::from_str(value),
-            ) {
-                resp.headers.insert(n, v);
-            }
-        }
-        resp
-    }
-}
-
-#[cfg(feature = "hyper-cgi")]
-impl<const N: usize> IntoResponse for (u16, [(&'static str, HeaderValue); N], &'static str) {
-    fn into_response(self) -> CgiResponse {
-        let (status, pairs, body) = self;
-        let mut resp = CgiResponse::new(status, body);
-        for (name, value) in pairs {
-            if let Ok(n) = hyper::header::HeaderName::from_bytes(name.as_bytes()) {
-                resp.headers.insert(n, value);
-            }
+            resp = resp.header(name, value);
         }
         resp
     }
@@ -390,5 +363,20 @@ mod tests {
             out.bytes,
             b"Status: 200 OK\nCache-Control: no-store, no-cache, must-revalidate\nPragma: no-cache\nContent-Type: application/json\n\n{}"
         );
+    }
+
+    #[test]
+    fn set_cookie_header_emitted() {
+        let mut out = CountingWrite {
+            writes: 0,
+            bytes: Vec::new(),
+        };
+        CgiResponse::text("ok\n")
+            .header("Set-Cookie", "a=1; Path=/")
+            .write_response_to_output(&mut out)
+            .unwrap();
+        let s = std::str::from_utf8(&out.bytes).unwrap();
+        assert!(s.contains("Set-Cookie: a=1; Path=/"));
+        assert!(s.contains("\n\nok\n"));
     }
 }

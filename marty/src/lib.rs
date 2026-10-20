@@ -9,8 +9,10 @@
 //! * Does not support Windows.
 //!
 //! ## Sync router
-//! [`Router`](crate::Router) maps CGI requests to plain `fn` handlers with `{param}` paths and [`Router::serve`].
+//! [`Router`](crate::Router) maps CGI requests to plain `fn` handlers with `{param}` / `{*catch}` paths and [`Router::serve`].
 //! Use [`CgiRequest`](crate::CgiRequest) / [`CgiResponse`](crate::CgiResponse) (no async runtime).
+//! Query/form (`query`, `form`) and cookies (`cookies`, `set_cookie`) need no extra features.
+//! Enable **`session`** for HMAC-signed cookie sessions that work across CGI process-per-request.
 //! Enable feature **`sync-cgi`** (without `hyper-cgi`) for a smaller sync-only build without hyper.
 //!
 //! ## Tower / Axum (optional)
@@ -55,7 +57,13 @@ use std::ffi::OsString;
 use std::os::unix::ffi::OsStrExt;
 
 pub mod cgi;
+pub mod cookie;
+pub mod form;
 pub mod router;
+
+#[cfg(feature = "session")]
+#[cfg_attr(docsrs, doc(cfg(feature = "session")))]
+pub mod session;
 
 #[cfg(feature = "hyper-cgi")]
 pub mod request;
@@ -63,7 +71,12 @@ pub mod request;
 pub mod response;
 
 pub use cgi::{CgiRequest, CgiResponse, IntoResponse, relative_path};
+pub use cookie::{Cookie, Cookies, SameSite};
+pub use form::{parse_urlencoded, percent_decode};
 pub use router::Router;
+
+#[cfg(feature = "session")]
+pub use session::{Session, SessionStore};
 
 #[cfg(feature = "tower")]
 #[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
