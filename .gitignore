@@ -32,3 +32,4 @@ benchmarks/complex/cgi-bin/
 benchmarks/complex/.pgo/
 benchmarks/complex/.trace/
 benchmarks/complex/.spawn-bin/
+tools/hosting-probe/dist/
