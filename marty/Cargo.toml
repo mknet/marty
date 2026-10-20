@@ -14,7 +14,10 @@ categories = ["network-programming", "web-programming::http-server"]
 [features]
 default = ["hyper-cgi"]
 # Sync [`Router`](crate::Router) / [`CgiRequest`](crate::CgiRequest) without hyper (smaller binaries).
+# Includes query/form/cookie helpers. Add **`session`** for signed cookie sessions.
 sync-cgi = []
+# HMAC-signed cookie sessions (`SessionStore`) for process-per-request CGI.
+session = ["dep:hmac", "dep:sha2"]
 # Hyper-based CGIRequest/CGIResponse and optional Tower integration.
 hyper-cgi = ["dep:hyper", "dep:bytes", "dep:http-body-util"]
 tower = ["hyper-cgi", "dep:tower", "dep:axum"]
@@ -26,6 +29,8 @@ snafu = "0.9"
 bytes = { version = "1", optional = true }
 tower = { version = "0.5", default-features = false, features = ["util"], optional = true }
 axum = { version = "0.8", optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
