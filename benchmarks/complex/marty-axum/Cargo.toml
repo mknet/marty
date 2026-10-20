@@ -1,0 +1,18 @@
+[package]
+name = "marty-axum"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Complex bench: Axum Router + serve_cgi (shared-host A/B vs sync)."
+
+[[bin]]
+name = "marty-axum"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+marty = { path = "../../../marty", features = ["tower"] }
+marty-bench-shared = { path = "../shared" }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
