@@ -6,6 +6,80 @@ Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
 
 **Use P50/P95 for comparisons**, not Avg alone — CGI runs often have long tails (Slow >> P95). Go’s **P50 can be much lower than Avg** (bimodal: many fast forks + some slow).
 
+## Run M — Hosting-like Apache: mpm_event + mod_cgid + suexec (2026-10-19)
+
+**The prefork results (Runs K/L) do not describe the target hosting.** The probes
+in [`tools/hosting-probe/`](../../tools/hosting-probe/) were run once each on
+all-inkl.com and reported: Ubuntu 24.04 (Apache 2.4.58), CGI `stdin`/`stdout`
+are **unix sockets** (`mod_cgid`, hence a threaded MPM — not prefork), the CGI
+runs as the site user with suexec's cleaned environment
+(`PATH=/usr/local/bin:/usr/bin:/bin`, only CGI/1.1 + `HTTP_*` + `SSL_*` vars),
+KeepAlive on, responses chunked, HTTP/2 negotiated over TLS. Server-side time
+for an empty Perl or Rust CGI was ~40–60 ms either way (TLS + RTT + wrapper
+dominate; the language does not).
+
+`docker/Dockerfile.hosting` mirrors that: Ubuntu 24.04, `mpm_event`,
+`mod_cgid`, `apache2-suexec-custom` (CGIs owned by and run as user `site`),
+PHP via php-fpm, `KeepAlive On`. Run with `just bench-fair-hosting`
+(separate compose project `marty-bench-complex-hosting`). suexec strips
+`BENCH_TIMING`, so the Startup column is n/a in this mode.
+
+`just bench-fair-hosting` — 2000 requests × 3 runs (median), C=10, all handlers,
+`marty-complex` with `apache-cgi-pacing` (crate default):
+
+| Handler          | Avg   | P50   | P95   | P99   | req/s   |
+|------------------|-------|-------|-------|-------|---------|
+| marty /primes    |   3.2 |   3.0 |   4.4 |   6.3 | 3068.72 |
+| marty /fibonacci |   2.4 |   2.2 |   3.8 |   5.0 | 4048.99 |
+| marty /matrix    |   5.0 |   4.7 |   7.0 |   9.6 | 1981.45 |
+| go /primes       |   4.3 |   4.0 |   6.3 |   8.4 | 2300.41 |
+| go /fibonacci    |   3.1 |   2.9 |   4.5 |   6.4 | 3179.67 |
+| go /matrix       |   8.0 |   7.4 |  13.5 |  19.1 | 1220.01 |
+| python /primes   |  90.3 |  83.2 | 136.2 | 190.9 |  110.02 |
+| python /fibonacci|  39.8 |  35.2 |  64.4 | 118.6 |  248.71 |
+| python /matrix   | 247.3 | 241.6 | 331.4 | 396.0 |   40.03 |
+| php /primes      |  24.5 |  23.1 |  37.8 |  47.0 |  399.51 |
+| php /fibonacci   |  11.4 |  10.9 |  18.7 |  24.9 |  842.19 |
+| php /matrix      |  44.3 |  42.1 |  63.3 |  79.7 |  222.40 |
+
+(A first run of the same command right after the image build showed a
+~20 ms fixed penalty on every compiled handler — Go `/primes` at 345 req/s —
+which did not reproduce in any later run; treat it as host noise.)
+
+### A/B: `apache-cgi-pacing` on the hosting-like stack
+
+Back-to-back, same session, `BENCH_LANGS="marty go"`, Go as the control
+(2707 → 2763 req/s between the two builds, i.e. ~2 % drift).
+`MARTY_CARGO_FLAGS="--no-default-features"` builds `marty-complex` without the
+feature:
+
+| Handler          | Pacing | Avg | P50 | P95  | P99  | req/s   |
+|------------------|--------|-----|-----|------|------|---------|
+| marty /primes    | off    | 2.6 | 2.5 |  3.3 |  4.9 | 3877.71 |
+| marty /primes    | on     | 3.3 | 3.0 |  4.4 |  6.4 | 3026.92 |
+| go /primes       | -      | 3.6 | 3.4 |  5.0 |  6.1 | 2762.61 |
+| marty /fibonacci | off    | 1.8 | 1.7 |  2.3 |  3.3 | 5544.36 |
+| marty /fibonacci | on     | 2.1 | 1.9 |  3.3 |  4.5 | 4782.64 |
+| go /fibonacci    | -      | 2.6 | 2.4 |  3.5 |  4.6 | 3801.20 |
+| marty /matrix    | off    | 4.2 | 4.0 |  5.6 |  7.5 | 2359.96 |
+| marty /matrix    | on     | 4.4 | 4.2 |  6.0 |  8.1 | 2209.47 |
+| go /matrix       | -      | 6.5 | 6.0 | 10.3 | 14.7 | 1502.99 |
+
+**Conclusion:**
+
+- On the hosting-like stack the prefork picture inverts: **Marty beats Go on
+  every route**, by 40–60 % in throughput without pacing, with lower P50 and
+  P99. The single-`write()` response is simply the cheapest thing a CGI can do
+  when the reader is the cgid daemon on a unix socket instead of a prefork
+  worker on a pipe.
+- **`apache-cgi-pacing` costs 6–22 % here** (most on the shortest responses)
+  and worsens P99. The feature is a prefork/`mod_cgi` workaround; do **not**
+  enable it for all-inkl-like deployments. The library default (feature off,
+  one write) is the right one for this hosting.
+- Both stacks together explain the earlier confusion: Go was never "faster at
+  CGI", it was accidentally well-paced for prefork. Absolute numbers on the
+  event/cgid stack are 2–3× higher for every compiled handler than on prefork.
+
 ## Run L — Marty "go-like" output (split header/body with micro-sleep) (2026-05-27)
 
 **Confirms the Apache prefork synchronization hypothesis.** With Marty's normal
