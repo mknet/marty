@@ -11,6 +11,8 @@ type BoxedHandler = Box<dyn Fn(&CgiRequest) -> CgiResponse + Send + Sync>;
 /// - `"/hello/{name}"` — one path segment → `req.param("name")`
 /// - `"/static/{*path}"` — catch-all (must be last) → remaining segments joined by `/`
 ///
+/// Compose routers with [`Router::nest`] (prefix) and [`Router::merge`] (append).
+///
 /// The Router automatically strips `SCRIPT_NAME` from the request path so that
 /// routes are relative to the CGI script's mount point.
 ///
@@ -19,11 +21,11 @@ type BoxedHandler = Box<dyn Fn(&CgiRequest) -> CgiResponse + Send + Sync>;
 /// ```rust,ignore
 /// use marty::Router;
 ///
+/// let mut api = Router::new();
+/// api.get("/users/{id}", |req| format!("user {}\n", req.param("id").unwrap()));
+///
 /// let mut router = Router::new();
-/// router.get("/hello/{name}", |req| {
-///     let name = req.param("name").unwrap_or("world");
-///     format!("Hello, {name}!\n")
-/// });
+/// router.nest("/api", api);
 /// router.get("/static/{*path}", |req| {
 ///     format!("file {}\n", req.param("path").unwrap_or(""))
 /// });
@@ -32,6 +34,8 @@ type BoxedHandler = Box<dyn Fn(&CgiRequest) -> CgiResponse + Send + Sync>;
 /// ```
 pub struct Router {
     routes: Vec<Route>,
+    /// Fallbacks installed by [`Router::nest`], tried (longest prefix first) before [`Self::fallback`].
+    scoped_fallbacks: Vec<(String, BoxedHandler)>,
     fallback: Option<BoxedHandler>,
 }
 
@@ -46,6 +50,7 @@ impl Router {
     pub fn new() -> Self {
         Self {
             routes: Vec::new(),
+            scoped_fallbacks: Vec::new(),
             fallback: None,
         }
     }
@@ -114,6 +119,43 @@ impl Router {
         self
     }
 
+    /// Mount `other` under `prefix`, rewriting its route patterns.
+    ///
+    /// `prefix` is normalized to a path without a trailing slash (`"/api"`, or
+    /// `""` / `"/"` for no prefix). Nested fallbacks apply only under that
+    /// prefix (and still work if the parent later sets [`Router::fallback`]).
+    pub fn nest(&mut self, prefix: &str, mut other: Router) -> &mut Self {
+        let prefix = normalize_prefix(prefix);
+        for route in other.routes.drain(..) {
+            self.routes.push(Route {
+                method: route.method,
+                pattern: route.pattern.with_prefix(&prefix),
+                handler: route.handler,
+            });
+        }
+        for (nested_prefix, fb) in other.scoped_fallbacks.drain(..) {
+            let full = join_prefix(&prefix, &nested_prefix);
+            self.scoped_fallbacks.push((full, fb));
+        }
+        if let Some(nested_fb) = other.fallback.take() {
+            self.scoped_fallbacks.push((prefix, nested_fb));
+        }
+        self
+    }
+
+    /// Append all routes (and scoped fallbacks) from `other`.
+    ///
+    /// If this router has no global fallback, it takes `other`'s. If both define
+    /// a global fallback, this router's is kept.
+    pub fn merge(&mut self, mut other: Router) -> &mut Self {
+        self.routes.append(&mut other.routes);
+        self.scoped_fallbacks.append(&mut other.scoped_fallbacks);
+        if self.fallback.is_none() {
+            self.fallback = other.fallback.take();
+        }
+        self
+    }
+
     /// Set a fallback handler for requests that don't match any registered route.
     pub fn fallback<H, R>(&mut self, handler: H) -> &mut Self
     where
@@ -158,6 +200,21 @@ impl Router {
             }
         }
 
+        let path = path.as_ref();
+
+        // Nested/scoped fallbacks: longest matching prefix wins.
+        let mut best: Option<&(String, BoxedHandler)> = None;
+        for entry in &self.scoped_fallbacks {
+            if path_has_prefix(path, &entry.0)
+                && best.as_ref().is_none_or(|b| entry.0.len() >= b.0.len())
+            {
+                best = Some(entry);
+            }
+        }
+        if let Some((_, fb)) = best {
+            return fb(&req);
+        }
+
         if let Some(fallback) = &self.fallback {
             return fallback(&req);
         }
@@ -169,6 +226,39 @@ impl Router {
 impl Default for Router {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Normalize a nest prefix: no trailing slash; empty/`/` → `""`; otherwise starts with `/`.
+fn normalize_prefix(prefix: &str) -> String {
+    let t = prefix.trim();
+    if t.is_empty() || t == "/" {
+        return String::new();
+    }
+    let mut p = if t.starts_with('/') {
+        t.to_string()
+    } else {
+        format!("/{t}")
+    };
+    while p.ends_with('/') && p.len() > 1 {
+        p.pop();
+    }
+    p
+}
+
+fn path_has_prefix(path: &str, prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return true;
+    }
+    path == prefix || path.starts_with(&format!("{prefix}/"))
+}
+
+fn join_prefix(outer: &str, inner: &str) -> String {
+    match (outer.is_empty(), inner.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => inner.to_string(),
+        (false, true) => outer.to_string(),
+        (false, false) => format!("{outer}{inner}"),
     }
 }
 
@@ -228,6 +318,21 @@ impl PathPattern {
             );
         }
 
+        PathPattern { segments }
+    }
+
+    fn with_prefix(&self, prefix: &str) -> Self {
+        if prefix.is_empty() {
+            return self.clone();
+        }
+        let mut segments = PathPattern::parse(prefix).segments;
+        assert!(
+            !segments
+                .iter()
+                .any(|s| matches!(s, PathSegment::CatchAll(_))),
+            "nest prefix must not contain a catch-all"
+        );
+        segments.extend(self.segments.iter().cloned());
         PathPattern { segments }
     }
 
@@ -328,6 +433,20 @@ fn from_hex(b: u8) -> Option<u8> {
 mod tests {
     use super::*;
 
+    fn get_req(path_info: &str) -> CgiRequest {
+        CgiRequest {
+            method: "GET".into(),
+            script_name: "/cgi-bin/app".into(),
+            path_info: path_info.into(),
+            query_string: "".into(),
+            uri: String::new(),
+            #[cfg(feature = "hyper-cgi")]
+            headers: Default::default(),
+            body: vec![],
+            path_params: HashMap::new(),
+        }
+    }
+
     #[test]
     fn match_root() {
         let p = PathPattern::parse("/");
@@ -400,6 +519,73 @@ mod tests {
     #[should_panic(expected = "catch-all")]
     fn catch_all_must_be_last() {
         let _ = PathPattern::parse("/{*path}/extra");
+    }
+
+    #[test]
+    fn nest_prefixes_routes() {
+        let mut api = Router::new();
+        api.get("/users/{id}", |req| {
+            format!("user {}\n", req.param("id").unwrap_or("?"))
+        });
+
+        let mut root = Router::new();
+        root.nest("/api", api);
+
+        let resp = root.handle_request(get_req("/api/users/7"));
+        assert_eq!(resp.status, "200");
+        assert_eq!(std::str::from_utf8(&resp.body).unwrap(), "user 7\n");
+
+        let miss = root.handle_request(get_req("/users/7"));
+        assert_eq!(miss.status, "404");
+    }
+
+    #[test]
+    fn nest_with_catch_all() {
+        let mut files = Router::new();
+        files.get("/{*path}", |req| {
+            format!("{}\n", req.param("path").unwrap_or(""))
+        });
+
+        let mut root = Router::new();
+        root.nest("/static", files);
+
+        let resp = root.handle_request(get_req("/static/a/b"));
+        assert_eq!(std::str::from_utf8(&resp.body).unwrap(), "a/b\n");
+    }
+
+    #[test]
+    fn merge_appends_routes() {
+        let mut a = Router::new();
+        a.get("/a", |_| "A\n");
+        let mut b = Router::new();
+        b.get("/b", |_| "B\n");
+        a.merge(b);
+
+        assert_eq!(
+            std::str::from_utf8(&a.handle_request(get_req("/a")).body).unwrap(),
+            "A\n"
+        );
+        assert_eq!(
+            std::str::from_utf8(&a.handle_request(get_req("/b")).body).unwrap(),
+            "B\n"
+        );
+    }
+
+    #[test]
+    fn nest_fallback_scoped_to_prefix() {
+        let mut api = Router::new();
+        api.get("/ok", |_| "ok\n");
+        api.fallback(|_| (404u16, "api-miss\n"));
+
+        let mut root = Router::new();
+        root.nest("/api", api);
+        root.fallback(|_| (404u16, "root-miss\n"));
+
+        let api_miss = root.handle_request(get_req("/api/missing"));
+        assert_eq!(std::str::from_utf8(&api_miss.body).unwrap(), "api-miss\n");
+
+        let root_miss = root.handle_request(get_req("/other"));
+        assert_eq!(std::str::from_utf8(&root_miss.body).unwrap(), "root-miss\n");
     }
 
     #[test]
