@@ -1,0 +1,75 @@
+# Hosting-like Apache for Marty complex benchmarks.
+#
+# Mirrors what tools/hosting-probe reported from all-inkl.com (Oct 2026):
+#   - Ubuntu 24.04 LTS, Apache 2.4.58 (distro package)
+#   - threaded MPM + mod_cgid (CGI stdin/stdout are unix sockets, not pipes)
+#   - CGI runs as the site user via suexec (cleaned env, PATH=/usr/local/bin:/usr/bin:/bin)
+#   - PHP via FPM (not mod_php), KeepAlive on, chunked CGI responses
+#
+# The default Dockerfile (mod_php + mod_cgi + prefork) stays the reference for the historical
+# RESULTS-SNAPSHOTS; select this one with BENCH_DOCKERFILE (see justfile `bench-fair-hosting`).
+FROM rust:1-bookworm AS rust
+WORKDIR /repo
+COPY . .
+ARG MARTY_RUSTFLAGS=""
+ARG MARTY_TARGET_CPU=""
+ARG MARTY_PGO_PROFILE=""
+ARG MARTY_CARGO_FLAGS=""
+RUN set -eux; \
+    case "$(uname -m)" in \
+      x86_64) target="x86_64-unknown-linux-musl" ;; \
+      aarch64|arm64) target="aarch64-unknown-linux-musl" ;; \
+      *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    rustflags="${MARTY_RUSTFLAGS}"; \
+    if [ -n "${MARTY_TARGET_CPU}" ]; then rustflags="${rustflags} -Ctarget-cpu=${MARTY_TARGET_CPU}"; fi; \
+    if [ -n "${MARTY_PGO_PROFILE}" ]; then rustflags="${rustflags} -Cprofile-use=/repo/${MARTY_PGO_PROFILE}"; fi; \
+    export RUSTFLAGS="${rustflags}"; \
+    export CARGO_INCREMENTAL=0; \
+    if [ -n "${RUSTFLAGS}" ]; then echo "RUSTFLAGS=${RUSTFLAGS}"; fi; \
+    rustup target add "$target"; \
+    cargo build -p marty-complex-bench --profile bench --target "$target" ${MARTY_CARGO_FLAGS}; \
+    mkdir -p /out; \
+    cp "target/$target/release/marty-complex-bench" /out/marty-complex
+
+FROM golang:1.22-bookworm AS go
+WORKDIR /src
+COPY benchmarks/complex/go-complex/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/go-complex .
+
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        apache2 apache2-suexec-custom php8.3-fpm python3 curl ca-certificates strace \
+    && a2dismod -q mpm_prefork \
+    && a2enmod -q mpm_event cgid suexec proxy proxy_fcgi setenvif status \
+    && a2enconf -q php8.3-fpm \
+    && a2dissite -q 000-default \
+    && rm -rf /var/lib/apt/lists/*
+
+# Site user like a shared-hosting customer account (uid >= suexec minimum).
+RUN groupadd -g 2000 site && useradd -u 2000 -g site -d /var/www/site -s /usr/sbin/nologin site \
+    && mkdir -p /var/www/site/cgi-bin /var/www/site/php /var/log/bench-timing /tmp/marty-pgo /tmp/marty-strace \
+    && chown -R site:site /var/www/site /var/log/bench-timing /tmp/marty-pgo /tmp/marty-strace \
+    && mkdir -p /run/php
+
+# suexec-custom: document root for CGIs executed on behalf of www-data's vhosts.
+RUN printf '/var/www/site\npublic_html\n' > /etc/apache2/suexec/www-data
+
+COPY benchmarks/complex/docker/apache-hosting.conf /etc/apache2/sites-available/000-bench.conf
+COPY benchmarks/complex/docker/php-fpm-hosting.conf /etc/php/8.3/fpm/pool.d/www.conf
+COPY benchmarks/complex/docker/hosting-entrypoint.sh /usr/local/bin/hosting-entrypoint.sh
+RUN a2ensite -q 000-bench && chmod 755 /usr/local/bin/hosting-entrypoint.sh
+
+COPY --chown=site:site benchmarks/complex/php/ /var/www/site/php/
+COPY --chown=site:site --from=rust /out/marty-complex /var/www/site/cgi-bin/marty-complex
+COPY --chown=site:site --from=go /out/go-complex /var/www/site/cgi-bin/go-complex
+COPY --chown=site:site benchmarks/complex/python-complex/complex.py /var/www/site/cgi-bin/python-complex
+
+# suexec refuses group/world-writable files or directories.
+RUN chmod 755 /var/www/site /var/www/site/cgi-bin /var/www/site/cgi-bin/* \
+    && chmod 644 /var/www/site/php/complex.php
+
+EXPOSE 80
+ENTRYPOINT ["/usr/local/bin/hosting-entrypoint.sh"]
