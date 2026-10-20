@@ -1,24 +1,16 @@
-//! Example **04_cookies**: `tower_cookies` with Axum behind `marty::serve_cgi`.
-//!
-//! Sets a response cookie via `CookieManagerLayer` and a small plain-text body.
+//! Example **04_cookies**: sync [`Cookie`] / [`CgiResponse::set_cookie`] (no tower-cookies).
 
-use axum::{Router, routing::get};
-use marty::serve_cgi;
-use tower_cookies::{Cookie, CookieManagerLayer, Cookies};
+use marty::{CgiResponse, Cookie, Router};
 
-#[tokio::main]
-async fn main() {
-    let app = Router::new()
-        .route(
-            "/cgi-bin/marty-04-cookies",
-            get(|cookies: Cookies| async move {
-                cookies.add(Cookie::new("marty_04", "from-marty-04-cookies"));
-                "04_cookies: Set-Cookie sent (see response headers).\n".to_string()
-            }),
-        )
-        .layer(CookieManagerLayer::new());
+fn main() {
+    let mut router = Router::new();
+    router.get("/", |_| {
+        CgiResponse::text("04_cookies: Set-Cookie sent (see response headers).\n")
+            .set_cookie(Cookie::new("marty_04", "from-marty-04-cookies"))
+    });
+    router.fallback(|_| (404u16, "Not found\n"));
 
-    if let Err(e) = serve_cgi(app).await {
+    if let Err(e) = router.serve() {
         eprintln!("Error while serving CGI request: {e}");
         std::process::exit(1);
     }
