@@ -1,58 +1,22 @@
-//! Complex benchmark: CPU-heavy GET routes through the `marty` sync CGI router.
+//! Complex bench — sync [`marty::Router`] (Docker fair bench + uploadable hosting binary).
 
-mod compute;
 mod json;
-mod salt;
 mod timing;
 
-use compute::{fibonacci_work, matrix_checksum, prime_count};
 use marty::{CgiRequest, CgiResponse, Router};
-use salt::{effective_matrix_size, effective_prime_limit, request_salt};
-use std::ffi::OsStr;
+use marty_bench_shared::compute::{fibonacci_work, matrix_checksum, prime_count};
+use marty_bench_shared::salt::{effective_matrix_size, effective_prime_limit, request_salt};
+use marty_bench_shared::{
+    DEFAULT_MATRIX_SIZE, DEFAULT_PRIME_LIMIT, MAX_MATRIX_SIZE, MAX_PRIME_LIMIT, parse_salt,
+    parse_usize_arg, query_param,
+};
 use std::time::Instant;
-
-const DEFAULT_PRIME_LIMIT: usize = 400_000;
-const DEFAULT_MATRIX_SIZE: usize = 128;
-const MAX_PRIME_LIMIT: usize = 1_000_000;
-const MAX_MATRIX_SIZE: usize = 200;
-
-fn query_param<'a>(query_string: &'a str, name: &str) -> Option<&'a str> {
-    query_string.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == name).then_some(value)
-    })
-}
 
 fn wants_profile(query_string: &str) -> bool {
     matches!(
         query_param(query_string, "profile"),
         Some("1" | "true" | "yes")
     )
-}
-
-fn parse_salt(query_string: &str) -> Option<u64> {
-    query_param(query_string, "salt").and_then(parse_u64_ascii)
-}
-
-fn parse_u64_ascii(s: &str) -> Option<u64> {
-    if s.is_empty() {
-        return None;
-    }
-    let mut n = 0u64;
-    for b in s.bytes() {
-        if !b.is_ascii_digit() {
-            return None;
-        }
-        n = n.checked_mul(10)?.checked_add(u64::from(b - b'0'))?;
-    }
-    Some(n)
-}
-
-fn parse_usize_arg(arg: Option<&str>, default: usize, max: usize) -> usize {
-    arg.and_then(parse_u64_ascii)
-        .and_then(|n| usize::try_from(n).ok())
-        .unwrap_or(default)
-        .min(max)
 }
 
 fn run_route_u64(
@@ -97,7 +61,7 @@ fn run_route_u64(
         );
         timing::log_phase(true, "response_ready");
         eprintln!(
-            "bench-timing lang=marty-complex summary until_compute_us={:?} startup_us={} compute_us={} total_us={}",
+            "bench-timing lang=marty-sync summary until_compute_us={:?} startup_us={} compute_us={} total_us={}",
             p.until_compute_us, p.startup_us, p.compute_us, p.total_us
         );
         p
@@ -149,7 +113,7 @@ fn run_route_matrix(
         );
         timing::log_phase(true, "response_ready");
         eprintln!(
-            "bench-timing lang=marty-complex summary until_compute_us={:?} startup_us={} compute_us={} total_us={}",
+            "bench-timing lang=marty-sync summary until_compute_us={:?} startup_us={} compute_us={} total_us={}",
             p.until_compute_us, p.startup_us, p.compute_us, p.total_us
         );
         p
@@ -215,10 +179,6 @@ fn router(bench_timing: bool) -> Router {
     router
 }
 
-fn split_response_enabled() -> bool {
-    std::env::var_os("MARTY_COMPLEX_SPLIT_RESPONSE").as_deref() == Some(OsStr::new("1"))
-}
-
 fn main() {
     let req = match CgiRequest::from_env() {
         Ok(req) => req,
@@ -235,12 +195,7 @@ fn main() {
     timing::log_phase(profile_on, "pre_serve");
 
     let resp = router(bench_timing).handle_request(req);
-    let result = if split_response_enabled() {
-        resp.write_response_to_stdout_split()
-    } else {
-        resp.write_response_to_stdout()
-    };
-    if let Err(e) = result {
+    if let Err(e) = resp.write_response_to_stdout() {
         eprintln!("Error while serving CGI request: {e}");
         std::process::exit(1);
     }

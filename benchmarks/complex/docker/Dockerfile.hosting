@@ -14,7 +14,6 @@ COPY . .
 ARG MARTY_RUSTFLAGS=""
 ARG MARTY_TARGET_CPU=""
 ARG MARTY_PGO_PROFILE=""
-ARG MARTY_CARGO_FLAGS=""
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) target="x86_64-unknown-linux-musl" ;; \
@@ -28,9 +27,9 @@ RUN set -eux; \
     export CARGO_INCREMENTAL=0; \
     if [ -n "${RUSTFLAGS}" ]; then echo "RUSTFLAGS=${RUSTFLAGS}"; fi; \
     rustup target add "$target"; \
-    cargo build -p marty-complex-bench --profile bench --target "$target" ${MARTY_CARGO_FLAGS}; \
+    cargo build -p marty-sync --profile bench --target "$target"; \
     mkdir -p /out; \
-    cp "target/$target/release/marty-complex-bench" /out/marty-complex
+    cp "target/$target/release/marty-sync" /out/marty-sync
 
 FROM golang:1.22-bookworm AS go
 WORKDIR /src
@@ -63,7 +62,7 @@ COPY benchmarks/complex/docker/hosting-entrypoint.sh /usr/local/bin/hosting-entr
 RUN a2ensite -q 000-bench && chmod 755 /usr/local/bin/hosting-entrypoint.sh
 
 COPY --chown=site:site benchmarks/complex/php/ /var/www/site/php/
-COPY --chown=site:site --from=rust /out/marty-complex /var/www/site/cgi-bin/marty-complex
+COPY --chown=site:site --from=rust /out/marty-sync /var/www/site/cgi-bin/marty-sync
 COPY --chown=site:site --from=go /out/go-complex /var/www/site/cgi-bin/go-complex
 COPY --chown=site:site benchmarks/complex/python-complex/complex.py /var/www/site/cgi-bin/python-complex
 

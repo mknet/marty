@@ -1,0 +1,10 @@
+[package]
+name = "marty-bench-shared"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Shared compute + salt helpers for complex CGI benches."
+
+[lib]
+path = "src/lib.rs"

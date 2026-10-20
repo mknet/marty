@@ -5,7 +5,6 @@ COPY . .
 ARG MARTY_RUSTFLAGS=""
 ARG MARTY_TARGET_CPU=""
 ARG MARTY_PGO_PROFILE=""
-ARG MARTY_CARGO_FLAGS=""
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) target="x86_64-unknown-linux-musl" ;; \
@@ -19,9 +18,9 @@ RUN set -eux; \
     export CARGO_INCREMENTAL=0; \
     if [ -n "${RUSTFLAGS}" ]; then echo "RUSTFLAGS=${RUSTFLAGS}"; fi; \
     rustup target add "$target"; \
-    cargo build -p marty-complex-bench --profile bench --target "$target" ${MARTY_CARGO_FLAGS}; \
+    cargo build -p marty-sync --profile bench --target "$target"; \
     mkdir -p /out; \
-    cp "target/$target/release/marty-complex-bench" /out/marty-complex
+    cp "target/$target/release/marty-sync" /out/marty-sync
 
 FROM golang:1.22-bookworm AS go
 WORKDIR /src
@@ -43,10 +42,10 @@ RUN a2dissite 000-default.conf \
     && a2ensite 000-bench.conf
 
 COPY benchmarks/complex/php/ /var/www/html/php/
-COPY --from=rust /out/marty-complex /usr/lib/cgi-bin/marty-complex
+COPY --from=rust /out/marty-sync /usr/lib/cgi-bin/marty-sync
 COPY --from=go /out/go-complex /usr/lib/cgi-bin/go-complex
 COPY benchmarks/complex/python-complex/complex.py /usr/lib/cgi-bin/python-complex
 
-RUN chmod 755 /usr/lib/cgi-bin/marty-complex /usr/lib/cgi-bin/go-complex /usr/lib/cgi-bin/python-complex
+RUN chmod 755 /usr/lib/cgi-bin/marty-sync /usr/lib/cgi-bin/go-complex /usr/lib/cgi-bin/python-complex
 
 EXPOSE 80

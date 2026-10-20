@@ -70,7 +70,7 @@ pub fn log_bench_pre_compute(enabled: bool, route: &str) {
         .append(true)
         .open(BENCH_TIMING_LOG)
     {
-        let _ = writeln!(f, "marty-complex\t{route}\t{}", elapsed_us());
+        let _ = writeln!(f, "marty-sync\t{route}\t{}", elapsed_us());
     }
 }
 
@@ -80,7 +80,7 @@ pub fn log_phase(profile: bool, phase: &str) {
     }
     let _ = writeln!(
         std::io::stderr(),
-        "bench-timing lang=marty-complex phase={phase} elapsed_us={}",
+        "bench-timing lang=marty-sync phase={phase} elapsed_us={}",
         elapsed_us()
     );
 }

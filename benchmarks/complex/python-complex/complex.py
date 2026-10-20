@@ -19,7 +19,7 @@ DEFAULT_FIB_N = 42
 DEFAULT_MATRIX_SIZE = 128
 MAX_PRIME_LIMIT = 1_000_000
 MAX_FIB_N = 50
-MAX_MATRIX_SIZE = 200
+MAX_MATRIX_SIZE = 400
 SALT_MOD_PRIME = 5_000
 SALT_MOD_MATRIX = 16
 FIB_SEED = 42
@@ -218,7 +218,7 @@ def route_path() -> str:
     uri = os.environ.get("REQUEST_URI", "")
     if "?" in uri:
         uri = uri.split("?", 1)[0]
-    for marker in ("/python-complex/", "/marty-complex/", "/go-complex/"):
+    for marker in ("/python-complex/", "/marty-sync/", "/go-complex/"):
         if marker in uri:
             return unquote(uri.split(marker, 1)[1].strip("/"))
     return ""

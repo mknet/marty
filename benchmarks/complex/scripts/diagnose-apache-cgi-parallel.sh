@@ -15,7 +15,6 @@ TRACE_CONCURRENCY="${TRACE_CONCURRENCY:-10}"
 TRACE_WARMUP_REQUESTS="${TRACE_WARMUP_REQUESTS:-40}"
 TRACE_SECONDS="${TRACE_SECONDS:-8}"
 TRACE_STRACE="${TRACE_STRACE:-1}"
-MARTY_COMPLEX_SPLIT_RESPONSE="${MARTY_COMPLEX_SPLIT_RESPONSE:-0}"
 STATUS_INTERVAL_SEC="${STATUS_INTERVAL_SEC:-0.10}"
 OUT_DIR="${TRACE_OUT_DIR:-$HERE/.trace/apache-cgi-parallel-$(date +%Y%m%d-%H%M%S)}"
 
@@ -47,7 +46,6 @@ start_stack() {
   port="$(bench_host_port "$BASE")"
   export BENCH_PORT="$port"
   export BENCH_TIMING=0
-  export MARTY_COMPLEX_SPLIT_RESPONSE
   export GO_COMPLEX_RAW_CGI="${GO_COMPLEX_RAW_CGI:-0}"
   stop_docker_on_port "$port"
   dc down --remove-orphans 2>/dev/null || true
@@ -58,7 +56,6 @@ ensure_apache() {
   cd "$HERE"
   export BENCH_PORT="$(bench_host_port "$BASE")"
   export BENCH_TIMING=0
-  export MARTY_COMPLEX_SPLIT_RESPONSE
   export GO_COMPLEX_RAW_CGI="${GO_COMPLEX_RAW_CGI:-0}"
 
   if [[ "${BENCH_REBUILD:-1}" == "1" ]]; then
@@ -70,7 +67,7 @@ ensure_apache() {
   fi
 
   if [[ -n "$(dc ps -q bench 2>/dev/null)" ]] \
-    && curl -sf -o /dev/null -m 5 "$BASE/cgi-bin/marty-complex/primes/10000?salt=0" \
+    && curl -sf -o /dev/null -m 5 "$BASE/cgi-bin/marty-sync/primes/10000?salt=0" \
     && curl -sf -o /dev/null -m 5 "$BASE/server-status?auto"; then
     echo ">> reusing running complex bench container on ${BASE}"
     return
@@ -254,7 +251,7 @@ run_case() {
 
 mkdir -p "$OUT_DIR"
 ensure_apache
-wait_ready "$BASE/cgi-bin/marty-complex/primes/10000?salt=0"
+wait_ready "$BASE/cgi-bin/marty-sync/primes/10000?salt=0"
 wait_ready "$BASE/server-status?auto"
 
 cid="$(dc ps -q bench)"
@@ -270,12 +267,11 @@ echo "  Route:       $TRACE_ROUTE"
 echo "  Requests:    $TRACE_REQUESTS"
 echo "  Concurrency: $TRACE_CONCURRENCY"
 echo "  Strace:      $TRACE_STRACE"
-echo "  Marty split: $MARTY_COMPLEX_SPLIT_RESPONSE"
 echo "  Trace sec:   $TRACE_SECONDS"
 echo "  Output:      $OUT_DIR"
 echo
 
-run_case "marty" "marty-complex" "$cid"
+run_case "marty" "marty-sync" "$cid"
 echo
 run_case "go" "go-complex" "$cid"
 

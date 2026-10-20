@@ -1,16 +1,16 @@
 # CGI-only complex smoke (?salt=0).
-GET {{base_url}}/cgi-bin/marty-complex/primes/400000?salt=0
+GET {{base_url}}/cgi-bin/marty-sync/primes/400000?salt=0
 HTTP 200
 [Asserts]
 jsonpath "$.salt" == 0
 jsonpath "$.result" == 33860
 
-GET {{base_url}}/cgi-bin/marty-complex/fibonacci/42?salt=0
+GET {{base_url}}/cgi-bin/marty-sync/fibonacci/42?salt=0
 HTTP 200
 [Asserts]
 jsonpath "$.result" == 803742888000
 
-GET {{base_url}}/cgi-bin/marty-complex/matrix/128?salt=0
+GET {{base_url}}/cgi-bin/marty-sync/matrix/128?salt=0
 HTTP 200
 [Asserts]
 jsonpath "$.route" == "matrix"

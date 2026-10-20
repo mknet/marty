@@ -12,7 +12,9 @@ members = [
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
     "benchmarks/simple/marty-webhook",
-    "benchmarks/complex/marty-complex",
+    "benchmarks/complex/shared",
+    "benchmarks/complex/marty-sync",
+    "benchmarks/complex/marty-axum",
     "tools/hosting-probe/probe-rs",
 ]
 
@@ -22,7 +24,7 @@ codegen-units = 1
 strip = true
 panic = "abort"
 
-# Fat LTO for marty-complex-bench only (`cargo build -p marty-complex-bench --profile bench`).
+# Fat LTO for complex Marty sync bench (`cargo build -p marty-sync --profile bench`).
 [profile.bench]
 inherits = "release"
 lto = "fat"
