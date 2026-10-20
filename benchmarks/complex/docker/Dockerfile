@@ -5,6 +5,7 @@ COPY . .
 ARG MARTY_RUSTFLAGS=""
 ARG MARTY_TARGET_CPU=""
 ARG MARTY_PGO_PROFILE=""
+ARG MARTY_CARGO_FLAGS=""
 RUN set -eux; \
     case "$(uname -m)" in \
       x86_64) target="x86_64-unknown-linux-musl" ;; \
@@ -18,7 +19,7 @@ RUN set -eux; \
     export CARGO_INCREMENTAL=0; \
     if [ -n "${RUSTFLAGS}" ]; then echo "RUSTFLAGS=${RUSTFLAGS}"; fi; \
     rustup target add "$target"; \
-    cargo build -p marty-complex-bench --profile bench --target "$target"; \
+    cargo build -p marty-complex-bench --profile bench --target "$target" ${MARTY_CARGO_FLAGS}; \
     mkdir -p /out; \
     cp "target/$target/release/marty-complex-bench" /out/marty-complex
 
