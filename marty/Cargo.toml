@@ -15,10 +15,6 @@ categories = ["network-programming", "web-programming::http-server"]
 default = ["hyper-cgi"]
 # Sync [`Router`](crate::Router) / [`CgiRequest`](crate::CgiRequest) without hyper (smaller binaries).
 sync-cgi = []
-# Pace stdout CGI responses for Apache mod_cgi/prefork by writing headers and
-# body as separate phases with a tiny delay. Keep this opt-in: the default path
-# remains the fastest single-write response for servers that do not need pacing.
-apache-cgi-pacing = []
 # Hyper-based CGIRequest/CGIResponse and optional Tower integration.
 hyper-cgi = ["dep:hyper", "dep:bytes", "dep:http-body-util"]
 tower = ["hyper-cgi", "dep:tower", "dep:axum"]
