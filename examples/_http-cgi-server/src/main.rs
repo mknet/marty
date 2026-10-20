@@ -27,24 +27,42 @@ fn main() {
     }
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let mut buffer = [0; 1024];
-    let n = stream.read(&mut buffer).unwrap();
-    let request = String::from_utf8_lossy(&buffer[..n]);
+fn read_http_request(
+    mut stream: &TcpStream,
+) -> Option<(String, String, String, HashMap<String, String>, Vec<u8>)> {
+    let mut buf = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 4096];
 
+    loop {
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if header_end(&buf).is_some() {
+            break;
+        }
+        if buf.len() > 1 << 20 {
+            return None;
+        }
+    }
+
+    let header_len = header_end(&buf)?;
+    let header_bytes = &buf[..header_len];
+    let mut body = buf[header_len..].to_vec();
+
+    let request = String::from_utf8_lossy(header_bytes);
     let mut lines = request.lines();
     let first_line = lines.next().unwrap_or("");
     let parts: Vec<&str> = first_line.split_whitespace().collect();
 
     if parts.len() < 3 {
-        send_error(stream, "400 Bad Request");
-        return;
+        return None;
     }
 
-    let method = parts[0];
-    let path = parts[1];
+    let method = parts[0].to_string();
+    let (path, query_string) = split_request_target(parts[1]);
 
-    // Parse headers
     let mut headers = HashMap::new();
     for line in lines {
         if line.is_empty() {
@@ -55,9 +73,46 @@ fn handle_connection(mut stream: TcpStream) {
         }
     }
 
-    // Check if this is a CGI request
+    let content_length: usize = headers
+        .get("content-length")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
+    while body.len() < content_length {
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        body.extend_from_slice(&chunk[..n]);
+    }
+    body.truncate(content_length);
+
+    Some((method, path, query_string, headers, body))
+}
+
+/// Split an HTTP request-target into path and query (without the `?`).
+fn split_request_target(target: &str) -> (String, String) {
+    match target.split_once('?') {
+        Some((path, query)) => (path.to_string(), query.to_string()),
+        None => (target.to_string(), String::new()),
+    }
+}
+
+fn header_end(buf: &[u8]) -> Option<usize> {
+    if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+        return Some(i + 4);
+    }
+    buf.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
+}
+
+fn handle_connection(mut stream: TcpStream) {
+    let Some((method, path, query_string, headers, body)) = read_http_request(&mut stream) else {
+        send_error(stream, "400 Bad Request");
+        return;
+    };
+
     if path.starts_with("/cgi-bin/") {
-        handle_cgi_request(stream, method, path, headers);
+        handle_cgi_request(stream, &method, &path, &query_string, headers, body);
     } else {
         send_error(stream, "404 Not Found");
     }
@@ -67,7 +122,9 @@ fn handle_cgi_request(
     stream: TcpStream,
     method: &str,
     path: &str,
+    query_string: &str,
     headers: HashMap<String, String>,
+    request_body: Vec<u8>,
 ) {
     // First path segment under /cgi-bin/ is the executable; the rest is PATH_INFO (RFC 3875).
     let after_prefix = path.strip_prefix("/cgi-bin/").unwrap_or("");
@@ -118,10 +175,16 @@ fn handle_cgi_request(
         .unwrap_or(&"text/plain".to_string())
         .clone();
 
+    let request_uri = if query_string.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query_string}")
+    };
+
     env_vars.insert("REQUEST_METHOD".to_string(), method.to_string());
     env_vars.insert("CONTENT_LENGTH".to_string(), content_length);
-    env_vars.insert("REQUEST_URI".to_string(), path.to_string());
-    env_vars.insert("QUERY_STRING".to_string(), "".to_string());
+    env_vars.insert("REQUEST_URI".to_string(), request_uri);
+    env_vars.insert("QUERY_STRING".to_string(), query_string.to_string());
     env_vars.insert("CONTENT_TYPE".to_string(), content_type);
     env_vars.insert("SERVER_PROTOCOL".to_string(), "HTTP/1.1".to_string());
     env_vars.insert("GATEWAY_INTERFACE".to_string(), "CGI/1.1".to_string());
@@ -163,8 +226,9 @@ fn handle_cgi_request(
         Ok(mut child) => {
             // Send any input to the CGI script
             if let Some(mut stdin) = child.stdin.take() {
-                // For POST requests, you'd read the body here
-                stdin.write_all(b"").unwrap();
+                if !request_body.is_empty() {
+                    stdin.write_all(&request_body).unwrap();
+                }
             }
 
             // Read the output
@@ -176,6 +240,10 @@ fn handle_cgi_request(
 
             stdout.read_to_end(&mut output).unwrap();
             stderr.read_to_end(&mut error_output).unwrap();
+
+            if !error_output.is_empty() {
+                eprint!("{}", String::from_utf8_lossy(&error_output));
+            }
 
             // Wait for the process to complete
             let status = child.wait().unwrap();
@@ -237,4 +305,31 @@ fn send_error(mut stream: TcpStream, status: &str) {
         status
     );
     stream.write_all(response.as_bytes()).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_request_target;
+
+    #[test]
+    fn split_request_target_without_query() {
+        assert_eq!(
+            split_request_target("/cgi-bin/marty-02-routing/hello/Doc"),
+            (
+                "/cgi-bin/marty-02-routing/hello/Doc".to_string(),
+                String::new()
+            )
+        );
+    }
+
+    #[test]
+    fn split_request_target_with_query() {
+        assert_eq!(
+            split_request_target("/cgi-bin/marty-02-routing/hello/Doc?x=1&y=2"),
+            (
+                "/cgi-bin/marty-02-routing/hello/Doc".to_string(),
+                "x=1&y=2".to_string()
+            )
+        );
+    }
 }
