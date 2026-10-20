@@ -33,3 +33,4 @@ benchmarks/complex/.pgo/
 benchmarks/complex/.trace/
 benchmarks/complex/.spawn-bin/
 tools/hosting-probe/dist/
+benchmarks/complex/dist/
