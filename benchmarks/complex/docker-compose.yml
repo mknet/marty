@@ -4,11 +4,15 @@ services:
   bench:
     build:
       context: ../..
-      dockerfile: benchmarks/complex/docker/Dockerfile
+      # Default: mod_php + mod_cgi + prefork (reference for RESULTS-SNAPSHOTS).
+      # Hosting-like (mpm_event + mod_cgid + suexec + php-fpm): see `just bench-fair-hosting`.
+      dockerfile: "${BENCH_DOCKERFILE:-benchmarks/complex/docker/Dockerfile}"
       args:
         MARTY_RUSTFLAGS: "${MARTY_RUSTFLAGS:-}"
         MARTY_TARGET_CPU: "${MARTY_TARGET_CPU:-}"
         MARTY_PGO_PROFILE: "${MARTY_PGO_PROFILE:-}"
+        # Extra cargo flags for marty-complex, e.g. "--no-default-features" (no apache-cgi-pacing).
+        MARTY_CARGO_FLAGS: "${MARTY_CARGO_FLAGS:-}"
     ports:
       - "${BENCH_PORT:-8081}:80"
     environment:
