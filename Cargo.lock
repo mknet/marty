@@ -535,6 +535,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty-hosting-probe"
+version = "0.1.0"
+
+[[package]]
 name = "marty-webhook-bench"
 version = "0.1.0"
 dependencies = [
