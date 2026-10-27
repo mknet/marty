@@ -1,0 +1,54 @@
+# Cloudflare Workers alternatives — Rust → WASM via workers-rs + Wrangler.
+#
+#   just login / whoami / watch / deploy / destroy
+
+example := "01_basic"
+worker_name := "marty-alt-cf-01-basic"
+
+default:
+    @just --list
+
+# Browser OAuth for Wrangler (Cloudflare account).
+login:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}/{{ example }}"
+    npx --yes wrangler login
+    npx --yes wrangler whoami
+
+whoami:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{ justfile_directory() }}/{{ example }}"
+    npx --yes wrangler whoami
+
+# Ensure wasm target + worker-build are available, then `wrangler dev` (:8787).
+watch example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    rustup target add wasm32-unknown-unknown
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    cd "$ROOT"
+    exec npx --yes wrangler dev
+
+# Publish Worker (name from wrangler.toml → *.workers.dev).
+deploy example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    rustup target add wasm32-unknown-unknown
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    cd "$ROOT"
+    npx --yes wrangler deploy
+    echo
+    echo "Smoke: curl -sS \"https://{{ worker_name }}.\${CF_SUBDOMAIN}.workers.dev\""
+    echo "(subdomain from \`just whoami\` / dashboard; first deploy may 523 briefly while DNS propagates)"
+
+# Delete the deployed Worker script.
+destroy example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    cd "$ROOT"
+    npx --yes wrangler delete --force --name "{{ worker_name }}"

@@ -2,3 +2,6 @@
 aws-lambda/.rds-credentials
 azure-functions/**/handler
 azure-functions/**/*.zip
+cloudflare-workers/**/build/
+cloudflare-workers/**/.wrangler/
+cloudflare-workers/**/node_modules/

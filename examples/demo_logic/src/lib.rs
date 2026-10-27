@@ -1,11 +1,11 @@
 //! Shared **demo logic** for Marty CGI examples and cloud alternatives.
 //!
-//! Hosts (CGI, Lambda, Azure, …) stay different; this crate holds the bits that
+//! Hosts (CGI, Lambda, Azure, Workers, …) stay different; this crate holds the bits that
 //! should stay identical so the pitch is “same app logic, different runtime.”
 //!
 //! | Module | Used by |
 //! |--------|---------|
-//! | [`basic`] | [`01_basic`](../01_basic/), AWS/Azure `01_basic` |
+//! | [`basic`] | [`01_basic`](../01_basic/), AWS/Azure/Cloudflare `01_basic` |
 //! | [`visit`] | [`05_sqlite`](../05_sqlite/), [`07_mysql`](../07_mysql/), AWS `02_dynamodb` / `03_mysql` |
 
 #![forbid(unsafe_code)]
