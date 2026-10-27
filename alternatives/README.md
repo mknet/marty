@@ -10,10 +10,11 @@ Shared strings / visit formatting live in [`examples/demo_logic`](../examples/de
 |------|--------|--------|
 | [`aws-lambda/`](aws-lambda/) | `01_basic`, `02_dynamodb`, `03_mysql` | Twins of Marty `01_basic`, `05_sqlite`, `07_mysql` |
 | [`azure-functions/`](azure-functions/) | `01_basic` | Custom handler (no container); Marty `01_basic` |
+| [`cloudflare-workers/`](cloudflare-workers/) | `01_basic` | Rust → WASM (`workers-rs`); Marty `01_basic` |
 | [`gcp-cloud-functions/`](gcp-cloud-functions/) | Placeholder | Likely Cloud Run + container for Rust |
 
-| Marty example | Idea | AWS | Azure |
-|---------------|------|-----|-------|
-| [`examples/01_basic`](../examples/01_basic/) | smallest response | [`aws-lambda/01_basic`](aws-lambda/01_basic/) | [`azure-functions/01_basic`](azure-functions/01_basic/) |
-| [`examples/05_sqlite`](../examples/05_sqlite/) | little durable state | [`aws-lambda/02_dynamodb`](aws-lambda/02_dynamodb/) | *(planned: Table Storage)* |
-| [`examples/07_mysql`](../examples/07_mysql/) | relational MySQL | [`aws-lambda/03_mysql`](aws-lambda/03_mysql/) | *(planned: Flexible Server)* |
+| Marty example | Idea | AWS | Azure | Cloudflare |
+|---------------|------|-----|-------|------------|
+| [`examples/01_basic`](../examples/01_basic/) | smallest response | [`aws-lambda/01_basic`](aws-lambda/01_basic/) | [`azure-functions/01_basic`](azure-functions/01_basic/) | [`cloudflare-workers/01_basic`](cloudflare-workers/01_basic/) |
+| [`examples/05_sqlite`](../examples/05_sqlite/) | little durable state | [`aws-lambda/02_dynamodb`](aws-lambda/02_dynamodb/) | *(planned: Table Storage)* | *(planned: D1)* |
+| [`examples/07_mysql`](../examples/07_mysql/) | relational MySQL | [`aws-lambda/03_mysql`](aws-lambda/03_mysql/) | *(planned: Flexible Server)* | *(atypical; Hyperdrive / external)* |

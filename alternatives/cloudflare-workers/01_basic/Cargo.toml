@@ -1,0 +1,17 @@
+[package]
+name = "alt-cf-workers-01-basic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Cloudflare Workers (Rust→WASM) twin of Marty examples/01_basic"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+marty-demo-logic = { path = "../../../examples/demo_logic" }
+worker = "0.8"
+worker-macros = "0.8"
