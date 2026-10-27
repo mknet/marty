@@ -1,0 +1,239 @@
+# Azure Functions alternatives — `just login` / `just deploy` / `just destroy`
+# Custom handlers (Rust musl zip) — no container required.
+#
+# Default location: northeurope (free-trial often blocked in westeurope).
+# Override: `just deploy location=swedencentral`
+
+location := env("AZURE_LOCATION", "northeurope")
+rg := env("AZURE_RG", "marty-alt-azure")
+app := env("AZURE_FUNCTIONAPP", "marty-alt-az-01-basic")
+storage := env("AZURE_STORAGE", "martyaltaz01basic")
+example := "01_basic"
+
+default:
+    @just --list
+
+# Login to a specific tenant (not EWE / work orgs). Example:
+#   just login tenant=<your-tenant-id-or-domain.onmicrosoft.com>
+# Omit tenant only if you want the account picker; prefer an explicit tenant.
+login tenant="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -n "{{ tenant }}" ]]; then
+      echo "az login --tenant {{ tenant }}"
+      az login --tenant "{{ tenant }}"
+    else
+      echo "Tip: just login tenant=<GUID|name.onmicrosoft.com>  (avoids work tenants like EWE)"
+      az login
+    fi
+    echo
+    az account show --output table
+    echo
+    echo "Subscriptions in this login:"
+    az account list --query "[].{name:name, id:id, tenant:tenantId, default:isDefault}" -o table
+
+# List tenants Azure knows about for the current credentials (may be empty before login).
+tenants:
+    az account tenant list -o table
+
+# Pick subscription after login: `just use-sub <subscription-id-or-name>`
+use-sub id:
+    az account set --subscription "{{ id }}"
+    az account show --output table
+
+whoami:
+    az account show --output table
+
+# Linux musl `handler` binary into the function app root (Azure Linux Consumption).
+build example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    cd "$ROOT"
+    rustup target add x86_64-unknown-linux-musl
+    if command -v cargo-zigbuild >/dev/null 2>&1; then
+      cargo zigbuild --release --target x86_64-unknown-linux-musl
+    else
+      echo "hint: cargo-zigbuild recommended (brew/cargo install); falling back to cargo build"
+      cargo build --release --target x86_64-unknown-linux-musl
+    fi
+    cp -f target/x86_64-unknown-linux-musl/release/handler "$ROOT/handler"
+    chmod +x "$ROOT/handler"
+    file "$ROOT/handler"
+
+# Local Core Tools (`func start`). Needs Azure Functions Core Tools + built handler for your OS.
+watch example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    cd "$ROOT"
+    cargo build --release
+    cp -f target/release/handler "$ROOT/handler"
+    chmod +x "$ROOT/handler"
+    if ! command -v func >/dev/null 2>&1; then
+      echo "error: Azure Functions Core Tools not on PATH (https://aka.ms/func-core-tools)" >&2
+      exit 1
+    fi
+    exec func start
+
+# Create RG + storage + Linux Consumption Function App + zip deploy of 01_basic.
+deploy example=example: whoami (build example)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    RG="{{ rg }}"
+    APP="{{ app }}"
+    STOR="{{ storage }}"
+    LOC="{{ location }}"
+
+    # Storage account names: 3–24 lowercase alphanumeric.
+    if [[ ! "$STOR" =~ ^[a-z0-9]{3,24}$ ]]; then
+      echo "error: storage name must be 3–24 lowercase alphanumeric (got: $STOR)" >&2
+      exit 1
+    fi
+
+    echo "resource group: $RG ($LOC)"
+    echo "subscription: $(az account show --query id -o tsv) ($(az account show --query name -o tsv))"
+    # New/free-trial subs often need RP registration before Storage/Functions work.
+    echo "ensuring resource providers Microsoft.Storage + Microsoft.Web…"
+    az provider register --namespace Microsoft.Storage --output none
+    az provider register --namespace Microsoft.Web --output none
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      ST="$(az provider show -n Microsoft.Storage --query registrationState -o tsv 2>/dev/null || echo Unknown)"
+      WB="$(az provider show -n Microsoft.Web --query registrationState -o tsv 2>/dev/null || echo Unknown)"
+      echo "  Storage=$ST Web=$WB"
+      if [[ "$ST" == "Registered" && "$WB" == "Registered" ]]; then
+        break
+      fi
+      sleep 6
+    done
+    if [[ "$(az provider show -n Microsoft.Storage --query registrationState -o tsv)" != "Registered" ]]; then
+      echo "error: Microsoft.Storage not registered yet — retry just deploy in a minute" >&2
+      exit 1
+    fi
+
+    if az group show --name "$RG" >/dev/null 2>&1; then
+      EXISTING_LOC="$(az group show --name "$RG" --query location -o tsv)"
+      # Azure normalizes e.g. "West Europe" → compare case-insensitively / without spaces.
+      NORM_EXIST="$(echo "$EXISTING_LOC" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+      NORM_WANT="$(echo "$LOC" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
+      if [[ "$NORM_EXIST" != "$NORM_WANT" ]]; then
+        echo "resource group $RG is in '$EXISTING_LOC' but deploy wants '$LOC' — deleting old group…"
+        az group delete --name "$RG" --yes --output none
+        echo "waiting for $RG to disappear…"
+        for _ in $(seq 1 60); do
+          az group show --name "$RG" >/dev/null 2>&1 || break
+          sleep 5
+        done
+        if az group show --name "$RG" >/dev/null 2>&1; then
+          echo "error: $RG still exists; wait and re-run just deploy (or just destroy)" >&2
+          exit 1
+        fi
+      fi
+    fi
+    az group create --name "$RG" --location "$LOC" --output none
+
+    if ! az storage account show --name "$STOR" --resource-group "$RG" >/dev/null 2>&1; then
+      echo "creating storage account $STOR"
+      az storage account create \
+        --name "$STOR" \
+        --resource-group "$RG" \
+        --location "$LOC" \
+        --sku Standard_LRS \
+        --output none
+    fi
+
+    if ! az functionapp show --name "$APP" --resource-group "$RG" >/dev/null 2>&1; then
+      echo "creating function app $APP (Linux Consumption, custom handler)"
+      # Create with a known stack; custom handlers still need DOTNET|… + WORKER=Custom (see DEPLOY.md).
+      az functionapp create \
+        --name "$APP" \
+        --resource-group "$RG" \
+        --storage-account "$STOR" \
+        --consumption-plan-location "$LOC" \
+        --runtime dotnet \
+        --functions-version 4 \
+        --os-type Linux \
+        --output none
+    fi
+
+    # Custom handler host: capital-C Custom + linuxFxVersion (empty Fx → sync triggers 400).
+    az functionapp config appsettings set \
+      --name "$APP" \
+      --resource-group "$RG" \
+      --settings \
+        AzureWebJobsFeatureFlags=EnableWorkerIndexing \
+        FUNCTIONS_WORKER_RUNTIME=Custom \
+        FUNCTIONS_EXTENSION_VERSION=~4 \
+      --output none >/dev/null
+    az functionapp config set \
+      --name "$APP" \
+      --resource-group "$RG" \
+      --linux-fx-version "DOTNET|8.0" \
+      --output none
+    # Fresh apps need a moment before syncfunctiontriggers accepts the package.
+    az functionapp restart --name "$APP" --resource-group "$RG" --output none
+    sleep 20
+
+    # macOS `mktemp -t ….zip` leaves an empty file that `zip` corrupts — use a fresh path.
+    STAGE="$(mktemp -d "${TMPDIR:-/tmp}/marty-az.XXXXXX")"
+    ZIP="${STAGE}/deploy.zip"
+    trap 'rm -rf "$STAGE"' EXIT
+    (
+      cd "$ROOT"
+      test -x handler
+      # Zip payload: host.json, function folder(s), handler binary only.
+      zip -qr "$ZIP" host.json handler basic
+    )
+    unzip -t "$ZIP" >/dev/null
+    echo "zip deploy → $APP ($(wc -c <"$ZIP" | tr -d ' ') bytes)"
+    # config-zip uploads the blob then calls syncfunctiontriggers; on a cold host that
+    # sync often returns 400 ServiceUnavailable even though WEBSITE_RUN_FROM_PACKAGE is set.
+    set +e
+    az functionapp deployment source config-zip \
+      --resource-group "$RG" \
+      --name "$APP" \
+      --src "$ZIP" \
+      --build-remote false \
+      --output none
+    ZIP_RC=$?
+    set -e
+    if [[ "$ZIP_RC" -ne 0 ]]; then
+      echo "note: config-zip exited $ZIP_RC (usually sync triggers on a cold host) — package may still be live; see DEPLOY.md"
+    fi
+
+    az functionapp restart --name "$APP" --resource-group "$RG" --output none
+    sleep 15
+    set +e
+    az rest --method post \
+      --url "https://management.azure.com$(az functionapp show -g "$RG" -n "$APP" --query id -o tsv)/syncfunctiontriggers?api-version=2023-12-01" \
+      --output none
+    set -e
+
+    HOST="$(az functionapp show --name "$APP" --resource-group "$RG" --query defaultHostName -o tsv)"
+    URL="https://${HOST}/api/basic"
+    echo
+    echo "deployed: $URL"
+    echo -n "smoke: "
+    if curl -fsS --max-time 60 "$URL"; then
+      echo
+    else
+      echo
+      echo "warning: smoke curl failed — wait ~1m and retry: curl -sS $URL" >&2
+    fi
+    echo "docs: alternatives/azure-functions/DEPLOY.md"
+
+# Delete the whole resource group (Function App, storage, …).
+destroy: whoami
+    #!/usr/bin/env bash
+    set -euo pipefail
+    RG="{{ rg }}"
+    if az group show --name "$RG" >/dev/null 2>&1; then
+      echo "deleting resource group $RG…"
+      az group delete --name "$RG" --yes --no-wait
+      echo "delete started (async). Check: az group show -n $RG"
+    else
+      echo "resource group $RG not found (skip)"
+    fi
