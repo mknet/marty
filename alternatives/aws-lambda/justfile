@@ -1,0 +1,95 @@
+# AWS Lambda alternatives — from this directory: `just login`, `just whoami`, …
+# Requires: AWS CLI ≥ 2.32, just. Deploy recipes also need cargo-lambda.
+#
+# Region: major US/EU Lambda list prices match; avoid expensive outliers (e.g. af-south-1).
+# Default eu-west-1 (Ireland). Override: `just login region=us-east-1` or `AWS_REGION=…`.
+
+region := env("AWS_REGION", env("AWS_DEFAULT_REGION", "eu-west-1"))
+
+export AWS_REGION := region
+export AWS_DEFAULT_REGION := region
+
+default:
+    @just --list
+
+# Short-lived AWS credentials (opens browser) + pin default region for this profile.
+login:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "region={{ region }} (override: just login region=us-east-1)"
+    aws login
+    aws configure set region "{{ region }}"
+    aws sts get-caller-identity
+    echo "default region: $(aws configure get region)"
+
+# Cross-device login when no browser can open here (prints URL + code).
+login-remote:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "region={{ region }}"
+    aws login --remote
+    aws configure set region "{{ region }}"
+    aws sts get-caller-identity
+
+# Show Account / Arn and active region.
+whoami:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    aws sts get-caller-identity
+    echo "AWS_REGION={{ region }}"
+    echo "configured region: $(aws configure get region 2>/dev/null || echo '(unset)')"
+
+# Install Cargo Lambda into ~/.cargo/bin (needed for build / deploy / watch).
+# Version check must be `cargo lambda -V` (cargo subcommand); `cargo-lambda --version` breaks.
+install-cargo-lambda:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    if cargo lambda -V >/dev/null 2>&1; then
+      cargo lambda -V
+      exit 0
+    fi
+    cargo install cargo-lambda --locked
+    cargo lambda -V
+
+# Release build of 01_basic for Lambda (arm64 / Graviton — cheaper than x86).
+build: install-cargo-lambda
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    cd "{{ justfile_directory() }}/01_basic"
+    cargo lambda build --release --arm64
+
+# Local emulator for 01_basic (http://localhost:9000/).
+watch: install-cargo-lambda
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    cd "{{ justfile_directory() }}/01_basic"
+    cargo lambda watch
+
+# Optional override: `just deploy iam_role=arn:aws:iam::…:role/…`
+iam_role := env("CARGO_LAMBDA_IAM_ROLE", "")
+
+# Deploy 01_basic + Function URL into {{ region }}. Run `just login` / `just whoami` first.
+# cargo-lambda lacks `credentials-login` — export env keys from the aws login session.
+# If a prior attempt created `cargo-lambda-role-*`, reuse it via --iam-role (assume-role race).
+deploy: build whoami
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    eval "$(aws configure export-credentials --format env)"
+    ROLE="{{ iam_role }}"
+    if [[ -z "$ROLE" ]]; then
+      ROLE="$(aws iam list-roles \
+        --query 'Roles[?starts_with(RoleName, `cargo-lambda-role-`)].Arn | [0]' \
+        --output text 2>/dev/null || true)"
+      if [[ "$ROLE" == "None" ]]; then ROLE=""; fi
+    fi
+    cd "{{ justfile_directory() }}/01_basic"
+    args=(deploy alt-aws-lambda-01-basic --enable-function-url --region "{{ region }}")
+    if [[ -n "$ROLE" ]]; then
+      echo "using IAM role: $ROLE"
+      args+=(--iam-role "$ROLE")
+    fi
+    cargo lambda "${args[@]}"
