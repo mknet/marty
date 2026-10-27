@@ -3,6 +3,7 @@ resolver = "3"
 default-members = ["marty"]
 members = [
     "marty",
+    "examples/demo_logic",
     "examples/01_basic",
     "examples/02_routing",
     "examples/03_session",
@@ -16,6 +17,13 @@ members = [
     "benchmarks/complex/marty-sync",
     "benchmarks/complex/marty-axum",
     "tools/hosting-probe/probe-rs",
+]
+# Cloud alternatives keep their own Cargo.lock / deps (Lambda, GCF, …).
+exclude = [
+    "alternatives/aws-lambda/01_basic",
+    "alternatives/aws-lambda/02_dynamodb",
+    "alternatives/aws-lambda/03_mysql",
+    "alternatives/azure-functions/01_basic",
 ]
 
 [profile.release]

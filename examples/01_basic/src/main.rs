@@ -1,12 +1,15 @@
 //! Example **01_basic**: smallest Marty CGI binary — build a [`marty::CGIResponse`](marty::CGIResponse) and write it to stdout.
 //! No `serve_cgi`, no Tower feature, no async runtime: plain synchronous `main`.
-//! Run under a real CGI server (or `examples/_http-cgi-server`) with normal `REQUEST_*` variables.
+//! Body comes from shared [`marty_demo_logic::basic`] (same as cloud alternatives).
+//!
+//! `.htaccess` / deploy pattern: [`../02_routing/README.md`](../02_routing/README.md).
 
 use bytes::Bytes;
 use hyper::HeaderMap;
 use hyper::header::CONTENT_TYPE;
 use hyper::http::HeaderValue;
 use marty::CGIResponse;
+use marty_demo_logic::basic;
 
 fn main() {
     let mut headers = HeaderMap::new();
@@ -19,7 +22,7 @@ fn main() {
         headers,
         status: "200".into(),
         reason: Some("OK".into()),
-        body: Bytes::from_static(b"88 miles per hour!"),
+        body: Bytes::from_static(basic::BODY.as_bytes()),
     };
 
     if let Err(e) = response.write_response_to_output(std::io::stdout()) {

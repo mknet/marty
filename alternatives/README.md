@@ -4,6 +4,8 @@ Side-by-side sketches of **cloud function** stacks that solve a similar problem 
 
 These are **not** Marty features. Each tree is a small, self-contained sample you can build/deploy with that cloud’s tooling so the Marty pitch stays concrete. **Every cloud example names its Marty twin** under `examples/`.
 
+Shared strings / visit formatting live in [`examples/demo_logic`](../examples/demo_logic/) (`marty-demo-logic`) so CGI and cloud twins exercise the **same** business logic.
+
 | Path | Status | Notes |
 |------|--------|--------|
 | [`aws-lambda/`](aws-lambda/) | `01_basic`, `02_dynamodb`, `03_mysql` | Twins of Marty `01_basic`, `05_sqlite`, `07_mysql` |

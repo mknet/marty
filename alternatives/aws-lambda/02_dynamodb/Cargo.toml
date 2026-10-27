@@ -1,0 +1,17 @@
+[package]
+name = "alt-aws-lambda-02-dynamodb"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "DynamoDB twin of Marty examples/05_sqlite (no durable local SQLite on Lambda)"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[dependencies]
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-dynamodb = "1"
+lambda_http = "1"
+marty-demo-logic = { path = "../../../examples/demo_logic" }
+tokio = { version = "1", features = ["macros"] }
+uuid = { version = "1", features = ["v4"] }

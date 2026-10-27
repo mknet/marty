@@ -13,5 +13,6 @@ name = "handler"
 path = "src/main.rs"
 
 [dependencies]
+marty-demo-logic = { path = "../../../examples/demo_logic" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 warp = "0.3"
