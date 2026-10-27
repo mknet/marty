@@ -10,4 +10,5 @@ description = "Smallest AWS Lambda HTTP twin of Marty examples/01_basic"
 
 [dependencies]
 lambda_http = "1"
+marty-demo-logic = { path = "../../../examples/demo_logic" }
 tokio = { version = "1", features = ["macros"] }

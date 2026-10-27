@@ -1,0 +1,15 @@
+[package]
+name = "alt-aws-lambda-03-mysql"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "MySQL twin of Marty examples/07_mysql (e.g. RDS / Aurora — not free like shared hosting)"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[dependencies]
+lambda_http = "1"
+marty-demo-logic = { path = "../../../examples/demo_logic" }
+mysql_async = { version = "0.36", default-features = true }
+tokio = { version = "1", features = ["macros"] }

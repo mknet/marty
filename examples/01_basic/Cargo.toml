@@ -10,3 +10,4 @@ description = "Marty example 01_basic: minimal CGI script that writes a fixed CG
 bytes = "1"
 hyper = "1"
 marty = { path = "../../marty" }
+marty-demo-logic = { path = "../demo_logic" }

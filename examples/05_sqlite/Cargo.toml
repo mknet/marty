@@ -8,4 +8,5 @@ description = "Marty example 05_sqlite: rusqlite + sync marty::Router."
 
 [dependencies]
 marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
+marty-demo-logic = { path = "../demo_logic" }
 rusqlite = { version = "0.33", features = ["bundled"] }
