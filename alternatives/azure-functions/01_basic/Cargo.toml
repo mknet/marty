@@ -1,0 +1,17 @@
+[package]
+name = "alt-azure-01-basic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Azure Functions custom-handler twin of Marty examples/01_basic"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[[bin]]
+name = "handler"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+warp = "0.3"
