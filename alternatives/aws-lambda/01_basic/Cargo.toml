@@ -1,0 +1,13 @@
+[package]
+name = "alt-aws-lambda-01-basic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Smallest AWS Lambda HTTP twin of Marty examples/01_basic"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[dependencies]
+lambda_http = "1"
+tokio = { version = "1", features = ["macros"] }
