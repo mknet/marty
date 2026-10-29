@@ -1,4 +1,6 @@
 //! Example **04_cookies**: sync [`Cookie`] / [`CgiResponse::set_cookie`] (no tower-cookies).
+//!
+//! `.htaccess` / deploy: [`../02_routing/README.md`](../02_routing/README.md).
 
 use marty::{CgiResponse, Cookie, Router};
 

@@ -6,5 +6,11 @@ license = "Apache-2.0"
 publish = false
 description = "Marty example 04_cookies: sync Set-Cookie via marty::Cookie."
 
+[package.metadata.marty]
+alias = "cookies"
+
 [dependencies]
 marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
+
+[build-dependencies]
+marty = { path = "../../marty", default-features = false, features = ["htaccess"] }

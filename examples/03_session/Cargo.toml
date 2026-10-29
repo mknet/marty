@@ -6,5 +6,11 @@ license = "Apache-2.0"
 publish = false
 description = "Marty example 03_session: sync signed cookie session (works across CGI requests)."
 
+[package.metadata.marty]
+alias = "session"
+
 [dependencies]
 marty = { path = "../../marty", default-features = false, features = ["sync-cgi", "session"] }
+
+[build-dependencies]
+marty = { path = "../../marty", default-features = false, features = ["htaccess"] }
