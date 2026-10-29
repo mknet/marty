@@ -20,5 +20,5 @@ Uses the same Linux Consumption + custom-handler zip path as [`01_basic`](../01_
 Smoke:
 
 ```bash
-curl -sS "https://marty-alt-az-02-complex.azurewebsites.net/api/primes/400000?salt=0"
+curl -sS "https://<app>.azurewebsites.net/api/primes/400000?salt=0"
 ```
