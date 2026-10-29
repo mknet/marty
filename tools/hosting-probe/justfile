@@ -17,8 +17,15 @@ linux arch="x86_64":
       *) echo "unsupported arch: {{ arch }} (use x86_64 or arm)" >&2; exit 1 ;;
     esac
     just -f "$ROOT/justfile" _linux_musl marty-hosting-probe "$TRIPLE"
+    cd "$ROOT"
+    T="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    BIN="$T/deploy/marty-hosting-probe/cgi-bin/marty-hosting-probe"
+    if [[ ! -f "$BIN" ]]; then
+      BIN="$T/$TRIPLE/release/marty-hosting-probe"
+    fi
+    test -f "$BIN"
     mkdir -p "$HERE/dist"
-    install -m0755 "$ROOT/target/$TRIPLE/release/marty-hosting-probe" "$HERE/dist/marty-hosting-probe"
+    install -m0755 "$BIN" "$HERE/dist/marty-hosting-probe"
     install -m0755 "$HERE/probe.pl" "$HERE/dist/probe.pl"
     install -m0755 "$HERE/probe-outside.sh" "$HERE/dist/probe-outside.sh"
     echo "staged: $HERE/dist/ (upload marty-hosting-probe and probe.pl into cgi-bin, chmod 755)"
