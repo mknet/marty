@@ -1,12 +1,20 @@
 # Cloudflare Workers alternatives — Rust → WASM via workers-rs + Wrangler.
 #
 #   just login / whoami / watch / deploy / destroy
+#   just deploy 02_complex
 
 example := "01_basic"
-worker_name := "marty-alt-cf-01-basic"
 
 default:
     @just --list
+
+worker_name_for example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ example }}" in
+      02_complex) echo "marty-alt-cf-02-complex" ;;
+      01_basic|*) echo "marty-alt-cf-01-basic" ;;
+    esac
 
 # Browser OAuth for Wrangler (Cloudflare account).
 login:
@@ -39,16 +47,21 @@ deploy example=example:
     export PATH="${HOME}/.cargo/bin:${PATH}"
     rustup target add wasm32-unknown-unknown
     ROOT="{{ justfile_directory() }}/{{ example }}"
+    NAME="$(just --justfile "{{ justfile() }}" worker_name_for "{{ example }}")"
     cd "$ROOT"
     npx --yes wrangler deploy
     echo
-    echo "Smoke: curl -sS \"https://{{ worker_name }}.\${CF_SUBDOMAIN}.workers.dev\""
+    echo "Smoke: curl -sS \"https://${NAME}.\${CF_SUBDOMAIN}.workers.dev/primes/400000?salt=0\""
     echo "(subdomain from \`just whoami\` / dashboard; first deploy may 523 briefly while DNS propagates)"
+    if [[ "{{ example }}" == "02_complex" ]]; then
+      echo "CF_COMPLEX_URL=https://${NAME}.<subdomain>.workers.dev"
+    fi
 
 # Delete the deployed Worker script.
 destroy example=example:
     #!/usr/bin/env bash
     set -euo pipefail
     ROOT="{{ justfile_directory() }}/{{ example }}"
+    NAME="$(just --justfile "{{ justfile() }}" worker_name_for "{{ example }}")"
     cd "$ROOT"
-    npx --yes wrangler delete --force --name "{{ worker_name }}"
+    npx --yes wrangler delete --force --name "$NAME"
