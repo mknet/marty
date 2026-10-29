@@ -1,5 +1,5 @@
 # Marty workspace — shared CGI smoke (`scripts/cgi-example-smoke.sh`) and musl cross-build (`_linux_musl`).
-# From repo root: `just setup`, `just smoke-01-basic` … `just smoke-05-sqlite`, or `cd examples/… && just`
+# From repo root: `just setup`, `just smoke-01-basic` … `just smoke-05-sqlite` / `smoke-07-mysql`, or `cd examples/… && just`
 # Requires: just, bash, python3. Hurl: `just setup`.
 
 default:
@@ -35,14 +35,20 @@ _linux_musl package triple:
     fi
 
     cd "$ROOT"
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "error: python3 required (cargo metadata → target_directory)" >&2
+      exit 1
+    fi
+    TARGET_DIR="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+
     cargo zigbuild -p "$PKG" --release --target "$TRIPLE"
 
-    OUT="$ROOT/target/$TRIPLE/release/$PKG"
+    OUT="$TARGET_DIR/$TRIPLE/release/$PKG"
     if [[ ! -f "$OUT" ]]; then
-      OUT="$ROOT/target/release/$PKG"
+      OUT="$TARGET_DIR/release/$PKG"
     fi
     if [[ ! -f "$OUT" ]]; then
-      echo "error: binary not found under target/$TRIPLE/release/ or target/release/" >&2
+      echo "error: binary not found under $TARGET_DIR/$TRIPLE/release/ or $TARGET_DIR/release/" >&2
       exit 1
     fi
 
@@ -70,7 +76,22 @@ _linux_musl package triple:
         ;;
     esac
 
-    echo "linux musl ok: $OUT ($TRIPLE)"
+    # Optional sibling `{package}.htaccess` from `marty::htaccess::write_next_to_binary*`
+    # (examples). Tools like hosting-probe have no mount — binary-only deploy is fine.
+    HTA="${OUT}.htaccess"
+    DEPLOY="$TARGET_DIR/deploy/$PKG"
+    mkdir -p "$DEPLOY/cgi-bin"
+    cp -f "$OUT" "$DEPLOY/cgi-bin/$PKG"
+    chmod 755 "$DEPLOY/cgi-bin/$PKG"
+    if [[ -f "$HTA" ]]; then
+      cp -f "$HTA" "$DEPLOY/.htaccess"
+      echo "linux musl ok: $OUT ($TRIPLE)"
+      echo "deploy bundle: $DEPLOY  (cgi-bin/$PKG + .htaccess)"
+    else
+      rm -f "$DEPLOY/.htaccess"
+      echo "linux musl ok: $OUT ($TRIPLE)"
+      echo "deploy bundle: $DEPLOY  (cgi-bin/$PKG; no .htaccess — package has no htaccess build.rs)"
+    fi
 
 smoke-01-basic:
     just -f examples/01_basic/justfile smoke
@@ -86,6 +107,9 @@ smoke-04-cookies:
 
 smoke-05-sqlite:
     just -f examples/05_sqlite/justfile smoke
+
+smoke-07-mysql:
+    just -f examples/07_mysql/justfile smoke
 
 build-01-basic:
     just -f examples/01_basic/justfile build
@@ -117,6 +141,12 @@ build-05-sqlite:
 install-05-sqlite:
     just -f examples/05_sqlite/justfile install
 
+build-07-mysql:
+    just -f examples/07_mysql/justfile build
+
+install-07-mysql:
+    just -f examples/07_mysql/justfile install
+
 # cwd must be the example dir (./cgi-bin). Prefer: `cd examples/01_basic && just run-server`
 run-server:
     cd examples/01_basic && just run-server
@@ -132,6 +162,9 @@ run-server-04-cookies:
 
 run-server-05-sqlite:
     cd examples/05_sqlite && just run-server
+
+run-server-07-mysql:
+    cd examples/07_mysql && just run-server
 
 # Webhook load benchmarks — benchmarks/simple/ (see benchmarks/README.md)
 bench-webhook:
