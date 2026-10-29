@@ -8,17 +8,75 @@ Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
 
 **Use P50/P95 for comparisons**, not Avg alone — CGI runs often have long tails (Slow >> P95). Go’s **P50 can be much lower than Avg** (bimodal: many fast forks + some slow).
 
+## Run N — Outside compare: Hetzner S vs all-inkl (2026-10-28)
+
+Real shared hosts, same client laptop, same uploaded `marty-sync` / `marty-axum` / PHP complex artifacts, `just outside` defaults: **N=40, C=2**, routes `primes/400000`, `fibonacci/42`, `matrix/128` (`?salt=0`), ~360 GETs + probes. Latency in ms. Go not compared (arena OOM on all-inkl; not re-probed on Hetzner).
+
+**Probe fingerprints:** both hosts are **mod_cgid-class** (CGI stdout = unix **socket**), site/FTP user, KeepAlive + HTTP/2. all-inkl ≈ Ubuntu 24.04 / Apache 2.4.58; Hetzner Webhosting S ≈ **Debian 13**. Hetzner needs a domain in the package for HTTP (no `*.your-vhost.de` preview).
+
+### Hetzner Webhosting S
+
+| Handler | Avg | P50 | P95 | req/s | 200s |
+|---------|-----|-----|-----|-------|------|
+| sync /primes | 37.0 | 33.4 | 104.4 | 53.58 | 40 |
+| sync /fibonacci | 35.1 | 32.6 | 88.0 | 56.94 | 40 |
+| sync /matrix | 36.7 | 33.2 | 95.2 | 54.43 | 40 |
+| axum /primes | 37.3 | 34.0 | 99.6 | 52.90 | 40 |
+| axum /fibonacci | 36.4 | 33.5 | 89.1 | 54.74 | 40 |
+| axum /matrix | 38.1 | 35.4 | 84.3 | 52.26 | 40 |
+| php /primes | 49.2 | 34.0 | 84.0 | 38.80 | 40 |
+| php /fibonacci | 33.1 | 26.5 | 128.0 | 57.39 | 40 |
+| php /matrix | 57.9 | 55.0 | 108.2 | 33.91 | 40 |
+
+### all-inkl (same session)
+
+| Handler | Avg | P50 | P95 | req/s | 200s |
+|---------|-----|-----|-----|-------|------|
+| sync /primes | 56.2 | 51.6 | 149.8 | 35.56 | 40 |
+| sync /fibonacci | 54.3 | 49.9 | 137.7 | 36.75 | 40 |
+| sync /matrix | 57.4 | 53.8 | 139.4 | 34.71 | 40 |
+| axum /primes | 55.4 | 50.8 | 139.4 | 35.83 | 40 |
+| axum /fibonacci | 54.6 | 50.3 | 133.5 | 36.54 | 40 |
+| axum /matrix | 56.1 | 51.8 | 140.5 | 35.51 | 40 |
+| php /primes | 59.9 | 55.7 | 142.4 | 33.31 | 40 |
+| php /fibonacci | 47.5 | 42.7 | 127.4 | 42.14 | 40 |
+| php /matrix | 82.5 | 77.7 | 165.9 | 23.99 | 40 |
+
+### Head-to-head (P50)
+
+| Route | Hetzner | all-inkl |
+|-------|---------|----------|
+| sync primes | 33 ms | 52 ms |
+| sync fib | 33 ms | 50 ms |
+| sync matrix | 33 ms | 54 ms |
+| axum matrix | 35 ms | 52 ms |
+| php fib | 27 ms | 43 ms |
+| php matrix | **55 ms** | **78 ms** |
+
+**Takeaways:** relative pattern identical on both hosts — **sync ≈ axum**; light routes TLS/RTT-dominated (Marty ≈ PHP); **matrix** → Marty clearly ahead of PHP. Absolute latency favored Hetzner in this one-client run (~1.5×); do not read that as a permanent ranking. Host claim docs: [`docs/HOSTERS.md`](../../docs/HOSTERS.md), [`docs/DIRECTION.md`](../../docs/DIRECTION.md).
+
+### Hetzner light-route capacity sketch (same day, not `just outside`)
+
+`marty-sync` `primes/10000?salt=0` only (intentionally light so the client can push RPS). One laptop → one account; fair-use / not an SLA.
+
+| Load | Approx throughput | P50 | Notes |
+|------|-------------------|-----|-------|
+| Steady **320/min × 10 min** (~5.3 req/s, C=1) | ~5.3 req/s | ~31 ms | all 200s; latency at the same floor as C=2 outside |
+| Burst **C=60** | ~220 req/s | under ~300 ms | rough threshold discussed for “still feels OK” |
+| Grill **C=100 × 2 min** | ~233 req/s | ~430–435 ms | ~28k requests, all 200; host queues, not client |
+
 ## Run M — Hosting-like Apache: mpm_event + mod_cgid + suexec (2026-10-19)
 
 **The prefork results (Runs K/L) do not describe the target hosting.** The probes
-in [`tools/hosting-probe/`](../../tools/hosting-probe/) were run once each on
-all-inkl.com and reported: Ubuntu 24.04 (Apache 2.4.58), CGI `stdin`/`stdout`
+in [`tools/hosting-probe/`](../../tools/hosting-probe/) were run on
+**all-inkl.com** and later **Hetzner Webhosting S** (see **Run N**). all-inkl
+reported: Ubuntu 24.04 (Apache 2.4.58), CGI `stdin`/`stdout`
 are **unix sockets** (`mod_cgid`, hence a threaded MPM — not prefork), the CGI
 runs as the site user with suexec's cleaned environment
 (`PATH=/usr/local/bin:/usr/bin:/bin`, only CGI/1.1 + `HTTP_*` + `SSL_*` vars),
 KeepAlive on, responses chunked, HTTP/2 negotiated over TLS. Server-side time
 for an empty Perl or Rust CGI was ~40–60 ms either way (TLS + RTT + wrapper
-dominate; the language does not).
+dominate; the language does not). Hetzner S matched the same CGI shape on Debian 13.
 
 `docker/Dockerfile.hosting` mirrors that: Ubuntu 24.04, `mpm_event`,
 `mod_cgid`, `apache2-suexec-custom` (CGIs owned by and run as user `site`),
