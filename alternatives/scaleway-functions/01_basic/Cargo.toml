@@ -1,0 +1,17 @@
+[package]
+name = "alt-scw-functions-01-basic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Scaleway Serverless Functions twin of Marty examples/01_basic (source zip → managed Rust runtime)"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = "0.8"
+http = "1"
+marty-demo-logic = { path = "../../../examples/demo_logic" }

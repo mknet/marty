@@ -1,0 +1,17 @@
+[package]
+name = "alt-scw-functions-02-complex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Scaleway Serverless Functions twin of benchmarks/complex marty-sync"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = "0.8"
+http = "1"
+marty-bench-shared = { path = "../../../benchmarks/complex/shared" }

@@ -1,0 +1,16 @@
+# Used only inside the deploy zip (demo_logic vendored next to this file).
+[package]
+name = "alt-scw-functions-01-basic"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = "0.8"
+http = "1"
+marty-demo-logic = { path = "./demo_logic" }

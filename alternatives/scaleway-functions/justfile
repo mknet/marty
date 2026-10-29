@@ -1,0 +1,153 @@
+# Scaleway Serverless Functions — source zip + managed Rust runtime.
+#
+#   just login / whoami / package / deploy / destroy
+#   just deploy 02_complex
+#
+# Default region fr-par. Override: SCW_DEFAULT_REGION=nl-ams
+
+region := env("SCW_DEFAULT_REGION", "fr-par")
+namespace_name := env("SCW_NAMESPACE", "marty-alt-scw")
+runtime := env("SCW_RUNTIME", "rust196")
+example := "01_basic"
+handler := "handle"
+state_dir := justfile_directory() / ".state"
+ns_file := state_dir / "namespace-id"
+
+export SCW_DEFAULT_REGION := region
+
+default:
+    @just --list
+
+# Interactive CLI config (access key + secret + default project/region).
+login:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v scw >/dev/null 2>&1; then
+      echo "error: install Scaleway CLI (https://github.com/scaleway/scaleway-cli)" >&2
+      exit 1
+    fi
+    echo "region={{ region }} (override: SCW_DEFAULT_REGION=nl-ams)"
+    scw init
+    scw config info
+
+whoami:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scw config info
+    echo "SCW_DEFAULT_REGION={{ region }}"
+
+fn_name_for example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ example }}" in
+      02_complex) echo "marty-alt-scw-02-complex" ;;
+      01_basic|*) echo "marty-alt-scw-01-basic" ;;
+    esac
+
+# Stage path deps into the zip so Scaleway’s remote cargo build can resolve them.
+package example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    STAGE="$ROOT/.stage"
+    ZIP="$ROOT/function.zip"
+    rm -rf "$STAGE" "$ZIP"
+    mkdir -p "$STAGE/src"
+    cp "$ROOT/src/lib.rs" "$STAGE/src/lib.rs"
+    cp "$ROOT/Cargo.toml.stage" "$STAGE/Cargo.toml"
+    case "{{ example }}" in
+      02_complex)
+        SHARED="{{ justfile_directory() }}/../../benchmarks/complex/shared"
+        cp -R "$SHARED" "$STAGE/shared"
+        rm -rf "$STAGE/shared/target" "$STAGE/shared/Cargo.lock"
+        ;;
+      *)
+        DEMO="{{ justfile_directory() }}/../../examples/demo_logic"
+        cp -R "$DEMO" "$STAGE/demo_logic"
+        rm -rf "$STAGE/demo_logic/target" "$STAGE/demo_logic/Cargo.lock"
+        ;;
+    esac
+    cd "$STAGE"
+    zip -qr "$ZIP" .
+    echo "wrote $ZIP ($(wc -c < "$ZIP") bytes)"
+    unzip -l "$ZIP" | head -40
+
+# Ensure namespace + deploy source zip (create-or-update).
+deploy example=example:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v scw >/dev/null 2>&1; then
+      echo "error: install Scaleway CLI (https://github.com/scaleway/scaleway-cli)" >&2
+      exit 1
+    fi
+    just package "{{ example }}"
+    ROOT="{{ justfile_directory() }}/{{ example }}"
+    ZIP="$ROOT/function.zip"
+    FN_NAME="$(just --justfile "{{ justfile() }}" fn_name_for "{{ example }}")"
+    FN_FILE="{{ state_dir }}/function-id-${FN_NAME}"
+    mkdir -p "{{ state_dir }}"
+
+    NS_ID=""
+    if [[ -f "{{ ns_file }}" ]]; then
+      NS_ID="$(cat "{{ ns_file }}")"
+    fi
+    if [[ -z "$NS_ID" ]]; then
+      NS_ID="$(scw function namespace list name="{{ namespace_name }}" -o json \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")' 2>/dev/null || true)"
+    fi
+    if [[ -z "$NS_ID" ]]; then
+      echo "creating namespace {{ namespace_name }} in {{ region }}"
+      NS_ID="$(scw function namespace create name="{{ namespace_name }}" -o json \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+    fi
+    echo "$NS_ID" > "{{ ns_file }}"
+    echo "namespace-id=$NS_ID"
+
+    echo "deploying $FN_NAME (runtime={{ runtime }}, handler={{ handler }})"
+    scw function deploy \
+      name="$FN_NAME" \
+      namespace-id="$NS_ID" \
+      runtime="{{ runtime }}" \
+      zip-file="$ZIP"
+    FN_ID="$(scw function function list namespace-id="$NS_ID" name="$FN_NAME" -o json \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["id"] if d else "")')"
+    if [[ -z "$FN_ID" ]]; then
+      echo "error: function $FN_NAME not found after deploy" >&2
+      exit 1
+    fi
+    echo "$FN_ID" > "$FN_FILE"
+    scw function function update function-id="$FN_ID" handler="{{ handler }}" >/dev/null
+    DOMAIN="$(scw function function get function-id="$FN_ID" -o json \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("domain_name",""))')"
+    echo
+    echo "function-id=$FN_ID"
+    echo "endpoint: https://$DOMAIN"
+    if [[ "{{ example }}" == "02_complex" ]]; then
+      echo "SCW_COMPLEX_URL=https://$DOMAIN"
+      echo "smoke:    curl -sS \"https://$DOMAIN/primes/400000?salt=0\""
+    else
+      echo "smoke:    curl -sS \"https://$DOMAIN\""
+    fi
+
+# Delete one function (default: last example’s name) and optionally the namespace.
+destroy example=example wipe_namespace="0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    FN_NAME="$(just --justfile "{{ justfile() }}" fn_name_for "{{ example }}")"
+    FN_FILE="{{ state_dir }}/function-id-${FN_NAME}"
+    if [[ -f "$FN_FILE" ]]; then
+      FN_ID="$(cat "$FN_FILE")"
+      echo "deleting function $FN_NAME ($FN_ID)"
+      scw function function delete function-id="$FN_ID" || true
+      rm -f "$FN_FILE"
+    else
+      echo "no saved function-id for $FN_NAME (skip)"
+    fi
+    if [[ "{{ wipe_namespace }}" == "1" || "{{ wipe_namespace }}" == "true" ]]; then
+      if [[ -f "{{ ns_file }}" ]]; then
+        NS_ID="$(cat "{{ ns_file }}")"
+        echo "deleting namespace $NS_ID"
+        scw function namespace delete namespace-id="$NS_ID" || true
+        rm -f "{{ ns_file }}"
+      fi
+    fi

@@ -1,0 +1,16 @@
+# Used only inside the deploy zip (marty-bench-shared vendored as ./shared).
+[package]
+name = "alt-scw-functions-02-complex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+axum = "0.8"
+http = "1"
+marty-bench-shared = { path = "./shared" }
