@@ -49,7 +49,58 @@ fn main() {
 }
 ```
 
-Full example: [`examples/02_routing`](examples/02_routing/) (`just smoke-02-routing`).
+Full example: [`examples/02_routing`](examples/02_routing/) (`just smoke-02-routing`). Consumer deploy layout (Cargo.toml + `build.rs` + musl): see below and that example’s [README](examples/02_routing/README.md).
+
+### Your app: binary + `.htaccess`
+
+Pretty URLs on Apache are a **mount** (alias → CGI binary), not a dump of every `Router` route. Feature **`htaccess`** (no extra deps).
+
+**`Cargo.toml`** — package name = binary; alias = pretty URL segment:
+
+```toml
+[package]
+name = "my-cgi"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.marty]
+alias = "app"
+path_info = true   # optional: /app/foo → cgi-bin/my-cgi/foo
+
+[dependencies]
+marty = { version = "0.1", default-features = false, features = ["sync-cgi"] }
+
+[build-dependencies]
+marty = { version = "0.1", default-features = false, features = ["htaccess"] }
+```
+
+**`build.rs`**
+
+```rust ignore
+fn main() {
+    marty::htaccess::write_next_to_binary_from_manifest().unwrap();
+}
+```
+
+**Output** (after `cargo build --release`):
+
+```
+target/release/my-cgi
+target/release/my-cgi.htaccess
+```
+
+Upload the binary to `cgi-bin/` (`chmod 755`) and the `.htaccess` contents to the site root (or merge the `RewriteRule` lines). Changing `router.get(…)` does **not** change the `.htaccess` — only alias / package name / `path_info` do.
+
+**Linux musl (shared hosting):** a normal `cargo build` on macOS produces a macOS binary. For an uploadable static CGI, cross-compile (no Docker required):
+
+```bash
+# once: brew install zig && cargo install cargo-zigbuild --locked
+rustup target add x86_64-unknown-linux-musl
+cargo zigbuild -p my-cgi --release --target x86_64-unknown-linux-musl
+# → target/x86_64-unknown-linux-musl/release/my-cgi{,.htaccess}
+```
+
+In this repo the same flow is `just linux` under an example (stages `target/deploy/<pkg>/`). Worked example: [`examples/02_routing`](examples/02_routing/). Multi-app sample: [`examples/apache-combined-vhost.htaccess`](examples/apache-combined-vhost.htaccess).
 
 ---
 
@@ -79,7 +130,8 @@ async fn main() {
 | **Hyper CGI** | Default `hyper-cgi`: CGI env → `hyper::Request` / `hyper::Response` |
 | **Tower / Axum** | Feature `tower`: `serve_cgi` + `multi_mount_cgi_router*` |
 | **Dev server** | `examples/_http-cgi-server` — first `/cgi-bin/` segment is the binary, rest is `PATH_INFO` |
-| **Examples** | `01_basic` — fixed response; **`02_routing` — sync `Router`**; `03`–`05` — sessions/cookies/sqlite (Tower); **`06_axum` — optional Axum**; `sample-cgi-script` — kitchen sink |
+| **Examples** | `01_basic` — fixed response; **[`02_routing`](examples/02_routing/) — sync `Router` + deploy docs**; `03`–`05` — sync session/cookies/sqlite; **`06_axum` — optional Axum**; [`07_mysql`](examples/07_mysql/) — MySQL/MariaDB (shared hosting); `sample-cgi-script` — kitchen sink |
+| **`.htaccess`** | Feature `htaccess`: `[package.metadata.marty]` + `build.rs` → `{binary}.htaccess`; musl via `cargo zigbuild` / `just linux` |
 | **Benches** | [`benchmarks/complex/`](benchmarks/complex/) (Docker + upload/outside); host probe: [`tools/hosting-probe/`](tools/hosting-probe/) |
 
 Local smoke (build → `cgi-bin/` → `_http-cgi-server` → [Hurl](https://hurl.dev)): `just setup`, then e.g. `just smoke-02-routing`.
@@ -99,30 +151,30 @@ fn main() {
 
 ---
 
-## Shared hosting (all-inkl–style)
+## Shared hosting (all-inkl– / Hetzner-S–style)
 
-Product defaults: [`docs/DIRECTION.md`](docs/DIRECTION.md).
+Product defaults: [`docs/DIRECTION.md`](docs/DIRECTION.md). Host shortlist + prices: [`docs/HOSTERS.md`](docs/HOSTERS.md).
 
-Marty targets **one static CGI binary per app** (upload to `cgi-bin/`, `chmod 755`). Findings from probing and light outside load on [all-inkl.com](https://all-inkl.com) (Oct 2026), mirrored locally in `benchmarks/complex` (`just bench-fair-hosting`) and exercised via `tools/`:
+Marty targets **one static CGI binary per app** (upload to `cgi-bin/`, `chmod 755`). Findings from probing and light outside load on **[all-inkl.com](https://all-inkl.com)** and **[Hetzner Webhosting S](https://www.hetzner.com/webhosting)** (Oct 2026), mirrored locally in `benchmarks/complex` (`just bench-fair-hosting`) and exercised via `tools/`. Head-to-head numbers: [`RESULTS-SNAPSHOTS.md` Run N](benchmarks/complex/RESULTS-SNAPSHOTS.md#run-n--outside-compare-hetzner-s-vs-all-inkl-2026-10-28).
 
 ### What the host looks like
 
 | Fact | Implication |
 |------|-------------|
-| CGI `stdin`/`stdout` are **unix sockets** (`mod_cgid`) | Threaded MPM (event/worker), **not** classic prefork + `mod_cgi` pipes |
-| CGI runs as the **FTP/site user** (suexec-style cleaned env) | Only CGI/1.1 + `HTTP_*` + `SSL_*` vars reach the binary; `.htaccess` `SetEnv` toggles do **not** |
-| KeepAlive on, chunked responses, HTTP/2 over TLS | Absolute latency includes TLS + RTT (~40–60 ms floor for an empty CGI) |
-| Ubuntu 24.04 / Apache 2.4.x | Match with `benchmarks/complex/docker/Dockerfile.hosting` for local A/B |
+| CGI `stdin`/`stdout` are **unix sockets** (`mod_cgid`-class) | Threaded MPM (event/worker), **not** classic prefork + `mod_cgi` pipes — confirmed on **both** hosts |
+| CGI runs as the **FTP/site user** (suexec-style cleaned env) | Only CGI/1.1 + `HTTP_*` + `SSL_*` vars reach the binary; `.htaccess` `SetEnv` toggles do **not** (all-inkl; assume same elsewhere) |
+| KeepAlive on, chunked responses, HTTP/2 over TLS | Absolute latency includes TLS + RTT (empty CGI floor depends on client↔host path; ~33 ms Hetzner vs ~50–54 ms all-inkl in one same-client outside run) |
+| all-inkl: Ubuntu 24.04 / Apache 2.4.x; Hetzner S: Debian 13 | Local A/B: `benchmarks/complex/docker/Dockerfile.hosting` (Ubuntu hosting-like mirror) |
 
 ### Languages on that host
 
 | Runtime | Result |
 |---------|--------|
-| **Marty / Rust** (static musl) | Works. Small RSS; fine under suexec. |
-| **PHP** (FPM / host PHP) | Works. Short routes ≈ Marty (TLS cost dominates); heavy CPU → Marty much faster (~10× on `matrix/400`). |
-| **Go** (static `CGO_ENABLED=0`) | **Does not run**: runtime dies at init with `out of memory allocating heap arena map` (address-space limit). Kept in the complex bench as a negative proof. |
+| **Marty / Rust** (static musl) | Works on all-inkl and Hetzner S. Small RSS; fine under suexec-style env. |
+| **PHP** (FPM / host PHP) | Works on both. Short routes ≈ Marty (TLS cost dominates); heavy CPU → Marty much faster (matrix on outside; ~10× on `matrix/400` extreme). |
+| **Go** (static `CGO_ENABLED=0`) | **Does not run on all-inkl**: runtime dies at init with `out of memory allocating heap arena map` (address-space limit). Not re-probed on Hetzner. Kept in the complex bench as a negative proof. |
 
-So for all-inkl–class CGI, **Rust is the practical compiled option**; Go is out. Versus PHP, Marty is at least as good on light work and clearly better when the request is compute-heavy.
+So for this CGI class, **Rust is the practical compiled option**; Go is out on all-inkl. Versus PHP, Marty is at least as good on light work and clearly better when the request is compute-heavy — **same relative pattern on Hetzner and all-inkl**.
 
 ### Two routing stacks (same workloads)
 
@@ -131,7 +183,15 @@ So for all-inkl–class CGI, **Rust is the practical compiled option**; Go is ou
 | `marty-sync` | `sync-cgi` only | `marty::Router` (sync) | Smallest |
 | `marty-axum` | `tower` | Axum `Router` + `serve_cgi` | Larger (Tokio/Axum) |
 
-Same suite: [`benchmarks/complex/`](benchmarks/complex/) (`just linux` / `just outside` / `just bench-fair-hosting`). Probe: [`tools/hosting-probe/`](tools/hosting-probe/). Do **not** treat prefork-only Docker numbers as “all-inkl truth”.
+Same suite: [`benchmarks/complex/`](benchmarks/complex/) (`just linux` / `just outside` / `just bench-fair-hosting`). Probe: [`tools/hosting-probe/`](tools/hosting-probe/). Do **not** treat prefork-only Docker numbers as shared-host truth.
+
+### Latency vs cloud alternatives
+
+Same complex workload on AWS / Azure / Cloudflare / Scaleway + Hetzner / all-inkl (`alternatives/just outside`, Oct 2026): warm P50 **Hetzner S ≈ Cloudflare** (fastest); Azure/Scaleway mid; **all-inkl ≈ AWS** slower. Tables: [`alternatives/RESULTS-SNAPSHOTS.md`](alternatives/RESULTS-SNAPSHOTS.md).
+
+### Cost, honestly
+
+For **one stateless function** with little traffic, a cloud free tier (Lambda, Cloud Run, Workers, Scaleway) is cheaper than any hosting plan: it is free. Marty pays off when there is **data** (SQLite next to the binary or the hoster's MySQL, included in a ~2 to 10 € flat plan, vs an always-on cloud DB floor or a vendor data API) and when you want no lock-in to a vendor entry point. Numbers: [`docs/COST.md`](docs/COST.md). Cheapest verified plan so far: **Hetzner S (1.90 €)**; others still to probe: [`docs/HOSTERS.md`](docs/HOSTERS.md).
 
 ---
 
