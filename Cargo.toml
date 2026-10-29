@@ -10,6 +10,7 @@ members = [
     "examples/04_cookies",
     "examples/05_sqlite",
     "examples/06_axum",
+    "examples/07_mysql",
     "examples/_gen_htaccess",
     "examples/_http-cgi-server",
     "examples/sample-cgi-script",
@@ -24,7 +25,9 @@ exclude = [
     "alternatives/aws-lambda/01_basic",
     "alternatives/aws-lambda/02_dynamodb",
     "alternatives/aws-lambda/03_mysql",
+    "alternatives/aws-lambda/04_complex",
     "alternatives/azure-functions/01_basic",
+    "alternatives/azure-functions/02_complex",
 ]
 
 [profile.release]
