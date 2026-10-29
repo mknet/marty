@@ -18,6 +18,9 @@ default = ["hyper-cgi"]
 sync-cgi = []
 # HMAC-signed cookie sessions (`SessionStore`) for process-per-request CGI.
 session = ["dep:hmac", "dep:sha2"]
+# Apache `.htaccess` mount generator (`marty::htaccess`) — no extra deps; for consumer `build.rs`.
+# Reads `[package.metadata.marty]` (alias) + package name (binary).
+htaccess = []
 # Hyper-based CGIRequest/CGIResponse and optional Tower integration.
 hyper-cgi = ["dep:hyper", "dep:bytes", "dep:http-body-util"]
 tower = ["hyper-cgi", "dep:tower", "dep:axum"]
