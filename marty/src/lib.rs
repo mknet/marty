@@ -13,6 +13,7 @@
 //! Use [`CgiRequest`](crate::CgiRequest) / [`CgiResponse`](crate::CgiResponse) (no async runtime).
 //! Query/form (`query`, `form`) and cookies (`cookies`, `set_cookie`) need no extra features.
 //! Enable **`session`** for HMAC-signed cookie sessions that work across CGI process-per-request.
+//! Enable **`htaccess`** to generate Apache rewrite mounts (pretty URL → `cgi-bin` binary) from `build.rs`.
 //! Enable feature **`sync-cgi`** (without `hyper-cgi`) for a smaller sync-only build without hyper.
 //!
 //! ## Tower / Axum (optional)
@@ -64,6 +65,10 @@ pub mod router;
 #[cfg(feature = "session")]
 #[cfg_attr(docsrs, doc(cfg(feature = "session")))]
 pub mod session;
+
+#[cfg(feature = "htaccess")]
+#[cfg_attr(docsrs, doc(cfg(feature = "htaccess")))]
+pub mod htaccess;
 
 #[cfg(feature = "hyper-cgi")]
 pub mod request;
