@@ -1,0 +1,10 @@
+[package]
+name = "marty-gen-htaccess"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Regenerate examples/apache-combined-vhost.htaccess from marty::htaccess mounts."
+
+[build-dependencies]
+marty = { path = "../../marty", default-features = false, features = ["htaccess"] }
