@@ -10,7 +10,7 @@ Walk **most common for our target → historical / lab** below. Problems are cal
 
 **Why it matters:** This is the **primary Marty target** (all-inkl– / Hetzner-S–class). Upload a static musl binary → `cgi-bin/` → `chmod 755`.
 
-**Verified hosts (Oct 2026):** all-inkl (Ubuntu 24.04) and Hetzner Webhosting S (Debian 13) — both socket/cgid-class, site user, KeepAlive + HTTP/2. See [`HOSTERS.md`](HOSTERS.md) and outside Run N in [`RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md#run-n--outside-compare-hetzner-s-vs-all-inkl-2026-10-28).
+**Verified hosts (Oct 2026):** all-inkl (Ubuntu 24.04) and Hetzner Webhosting S (Debian 13) — both socket/cgid-class, site user, KeepAlive + HTTP/2. **netcup EiWoMiSau** is verified too but is **pipe**/mod_cgi-class (see §2). See [`HOSTERS.md`](HOSTERS.md) and outside Run N / Run O in [`RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md).
 
 **Local mirror:** [`benchmarks/complex/docker/Dockerfile.hosting`](../benchmarks/complex/docker/Dockerfile.hosting)  
 `just bench-fair-hosting` / `just docker-smoke-hosting` in `benchmarks/complex/`.
@@ -26,9 +26,9 @@ Walk **most common for our target → historical / lab** below. Problems are cal
 | TLS/RTT floor | Dominates light routes; absolute ms differ by client↔host path (Hetzner vs all-inkl outside from one laptop) |
 | Fair-use / load | Keep outside benches low-volume |
 
-## 2. Classic lab / many tutorials — `mpm_prefork` + `mod_cgi` (+ often `mod_php`)
+## 2. Classic / pipe CGI — `mpm_prefork` + `mod_cgi` (lab + some real hosts)
 
-**What it is:** One Apache process per connection; CGI stdio are **pipes**. Common in Docker PHP images and older docs. Easy to stand up; **not** what all-inkl– / Hetzner-S–style hosts run.
+**What it is:** CGI stdio are **pipes** (`mod_cgi`). Common in Docker PHP images and older docs. Easy to stand up. **Not** the primary all-inkl– / Hetzner-S shape — but **netcup EiWoMiSau** (Oct 2026 probe) matches this pipe fingerprint behind an nginx TLS front (Apache `SERVER_SOFTWARE`, site user, KeepAlive + HTTP/2). Still upload musl → `httpdocs/cgi-bin/` after enabling WCP **CGI-Unterstützung**; do not use Passenger Python/Node/Ruby for Marty.
 
 **Local mirror:** [`benchmarks/complex/docker/Dockerfile`](../benchmarks/complex/docker/Dockerfile) (default fair bench).  
 `just bench-fair` in `benchmarks/complex/`.
@@ -38,16 +38,17 @@ Walk **most common for our target → historical / lab** below. Problems are cal
 | Issue | Note |
 |-------|------|
 | Parent drain of CGI stdout | Extra `write()` syscalls on the pipe widen tails under concurrency |
-| “Pacing” experiments | Measured for prefork; **hurt** on the hosting-like stack → **removed** from Marty. Library keeps a single-write response path only |
-| Prefork ≠ hosting truth | Do not quote prefork-only numbers as shared-host performance |
+| “Pacing” experiments | Measured for prefork; **hurt** on the cgid hosting-like stack → **removed** from Marty. Library keeps a single-write response path only — also fine on netcup without reintroducing pacing |
+| Prefork-only Docker ≠ every host | Prefer outside numbers for claims; pipe hosts exist (netcup), socket hosts exist (all-inkl / Hetzner) |
+| Shared-host fair-use (netcup) | Calm **320/min** fine; aggressive **C=100** grill ~72 req/s then upstream **IP ban** (Hetzner queues instead). Not a library issue — document limits, don’t grill production accounts for marketing numbers |
 
-Snapshots: [`benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md).
+Snapshots: [`benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md) (Run O = netcup outside + capacity).
 
 ## 3. Short URLs via `.htaccess` / `mod_rewrite`
 
 **What it is:** Same CGI binary; pretty paths (`/routing/hello/Doc` → `cgi-bin/…/hello/Doc`) with `RewriteRule` + `[PT]`. Needs `AllowOverride` / rewrite enabled (typical on shared hosts that allow `.htaccess`).
 
-**DX:** feature **`htaccess`** — alias in `[package.metadata.marty]`, binary = `[package].name`; `build.rs` calls `write_next_to_binary_from_manifest()` → **`{binary}.htaccess`** beside the binary. Consumer walkthrough: [README — Your app: binary + `.htaccess`](../README.md#your-app-binary--htaccess) and [`examples/02_routing/README.md`](../examples/02_routing/README.md). App `Router` patterns are **not** mirrored as rewrite rules (they use `PATH_INFO`).
+**DX:** feature **`htaccess`** — alias in `[package.metadata.marty]`, binary = `[package].name`; `build.rs` calls `write_next_to_binary_from_manifest()` → **`{binary}.htaccess`** beside the binary. Consumer walkthrough: [README — Quick start](../README.md#quick-start) and [`examples/02_routing/README.md`](../examples/02_routing/README.md). App `Router` patterns are **not** mirrored as rewrite rules (they use `PATH_INFO`).
 
 ## 4. Less common (aware, not first-class)
 

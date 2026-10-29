@@ -15,15 +15,15 @@ This page is the **single source of truth** for cost numbers in this repo. Per-p
 
 | Item | Assumption |
 |------|------------|
-| Host | Shared web hosting with customer CGI (**all-inkl** and **Hetzner Webhosting S** verified Oct 2026; others: probe first, see [`HOSTERS.md`](HOSTERS.md)) |
-| Price | ~**2 to 10 € / month** flat incl. VAT (**Hetzner S 1.90 €** cheapest verified, netcup 1000 2.69 € still probe, all-inkl Privat 4.95 € / Premium 9.95 €, manitu M 5.99 €) |
+| Host | Shared web hosting with customer CGI (**all-inkl**, **Hetzner Webhosting S**, **netcup EiWoMiSau** verified Oct 2026; others: probe first, see [`HOSTERS.md`](HOSTERS.md)) |
+| Price | ~**2 to 10 € / month** flat incl. VAT (**Hetzner S 1.90 €** cheapest verified, netcup 1000 2.69 € still probe, netcup EiWoMiSau ~6.45 € verified, all-inkl Privat 4.95 € / Premium 9.95 €, manitu M 5.99 €) |
 | Included | Domain, TLS, mail, webspace, usually MySQL; traffic under fair use |
 | App | One static Marty binary in `cgi-bin/` (+ static assets / frontend build) |
 | Ops | FTP/SFTP upload, `chmod 755`, no container, no per-request bill |
 
 **Rough monthly cost:** the plan price, whether you get 10 k or a few million light hits, until fair-use or CPU limits kick in. Scaling "up" means a bigger plan or a VPS, not a line item per million invocations. **The plan price is also the ceiling.**
 
-**Latency (not cost):** on the shared complex outside bench (Oct 2026), **Hetzner S** matched **Cloudflare Workers** for warm P50 and beat AWS / Azure / Scaleway / all-inkl from the same client — end-to-end, same algorithms. See [`../alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md).
+**Latency (not cost):** on the shared complex outside bench (Oct 2026), **Hetzner S** matched **Cloudflare Workers** for warm P50 and beat AWS / Azure / Scaleway / all-inkl from the same client — end-to-end, same algorithms. **netcup EiWoMiSau** outside ~72 ms sync P50 (~2× Hetzner); fine under steady 320/min, fragile under hard parallel grill (IP ban). See [`../alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md) and [`../benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md) Run O.
 
 ## Setup B: cloud functions
 
