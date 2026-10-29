@@ -1,0 +1,11 @@
+# Cross-provider helpers for Marty cloud alternatives.
+#
+# Complex fair compare (after deploy + targets.env):
+#   just outside
+
+default:
+    @just --list
+
+# Low-volume complex outside compare (AWS / Azure / CF / Scaleway / Hetzner / all-inkl).
+outside:
+    bash "{{ justfile_directory() }}/compare-outside.sh"
