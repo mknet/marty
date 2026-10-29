@@ -2,6 +2,8 @@
 //!
 //! The session rides in a signed cookie so it survives classic CGI (one process per
 //! request). Set `MARTY_SESSION_SECRET` in production; a demo default is used otherwise.
+//!
+//! `.htaccess` / deploy: [`../02_routing/README.md`](../02_routing/README.md).
 
 use marty::{CgiRequest, CgiResponse, Router, SessionStore};
 

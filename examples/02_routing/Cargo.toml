@@ -6,5 +6,12 @@ license = "Apache-2.0"
 publish = false
 description = "Marty example 02_routing: sync marty::Router with two GET routes (plain + path param)."
 
+[package.metadata.marty]
+alias = "routing"
+path_info = true
+
 [dependencies]
 marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
+
+[build-dependencies]
+marty = { path = "../../marty", default-features = false, features = ["htaccess"] }

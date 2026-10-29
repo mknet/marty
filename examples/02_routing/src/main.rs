@@ -4,6 +4,9 @@
 //! - `GET …/hello/{name}` — one path segment (percent-decoded); response **HTML-escapes** `name`
 //! - Any other path → **404** with plain-text body `Not found`
 //!
+//! Deploy (`.htaccess` from `[package.metadata.marty]`, musl upload): see [`README.md`](../README.md)
+//! and the root README section *Your app: binary + `.htaccess`*.
+//!
 //! For existing Axum handlers, see `examples/06_axum`.
 
 use marty::{CgiRequest, Router};

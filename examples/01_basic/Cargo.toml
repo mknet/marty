@@ -6,8 +6,14 @@ license = "Apache-2.0"
 publish = false
 description = "Marty example 01_basic: minimal CGI script that writes a fixed CGI response (no Tower, no serve_cgi, no async runtime)."
 
+[package.metadata.marty]
+alias = "basic"
+
 [dependencies]
 bytes = "1"
 hyper = "1"
 marty = { path = "../../marty" }
 marty-demo-logic = { path = "../demo_logic" }
+
+[build-dependencies]
+marty = { path = "../../marty", default-features = false, features = ["htaccess"] }
