@@ -1,0 +1,7 @@
+# Marty twin: benchmarks/complex marty-sync — Rust → WASM Worker.
+name = "marty-alt-cf-02-complex"
+main = "build/index.js"
+compatibility_date = "2026-10-27"
+
+[build]
+command = "cargo install -q \"worker-build@^0.8\" && worker-build --release"

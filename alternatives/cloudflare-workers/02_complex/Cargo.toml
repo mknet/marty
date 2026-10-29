@@ -1,0 +1,17 @@
+[package]
+name = "alt-cf-workers-02-complex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Cloudflare Workers (Rust→WASM) twin of benchmarks/complex marty-sync"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+marty-bench-shared = { path = "../../../benchmarks/complex/shared" }
+worker = "0.8"
+worker-macros = "0.8"
