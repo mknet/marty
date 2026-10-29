@@ -78,7 +78,8 @@ watch example=example:
     fi
     exec func start
 
-# Create RG + storage + Linux Consumption Function App + zip deploy of 01_basic.
+# Create RG + storage + Linux Consumption Function App + zip deploy.
+# Complex: just app=marty-alt-az-02-complex storage=martyaltaz02complex deploy 02_complex
 deploy example=example: whoami (build example)
     #!/usr/bin/env bash
     set -euo pipefail
@@ -184,8 +185,17 @@ deploy example=example: whoami (build example)
     (
       cd "$ROOT"
       test -x handler
-      # Zip payload: host.json, function folder(s), handler binary only.
-      zip -qr "$ZIP" host.json handler basic
+      # Zip payload: host.json, handler, and every folder that has function.json.
+      funcs=()
+      for fj in "$ROOT"/*/function.json; do
+        [[ -f "$fj" ]] || continue
+        funcs+=("$(basename "$(dirname "$fj")")")
+      done
+      if [[ ${#funcs[@]} -eq 0 ]]; then
+        echo "error: no function.json folders under $ROOT" >&2
+        exit 1
+      fi
+      zip -qr "$ZIP" host.json handler "${funcs[@]}"
     )
     unzip -t "$ZIP" >/dev/null
     echo "zip deploy → $APP ($(wc -c <"$ZIP" | tr -d ' ') bytes)"
@@ -213,9 +223,18 @@ deploy example=example: whoami (build example)
     set -e
 
     HOST="$(az functionapp show --name "$APP" --resource-group "$RG" --query defaultHostName -o tsv)"
-    URL="https://${HOST}/api/basic"
+    if [[ -d "$ROOT/primes" ]]; then
+      URL="https://${HOST}/api/primes/400000?salt=0"
+      BASE_HINT="https://${HOST}/api"
+    else
+      URL="https://${HOST}/api/basic"
+      BASE_HINT="$URL"
+    fi
     echo
-    echo "deployed: $URL"
+    echo "deployed smoke URL: $URL"
+    if [[ -d "$ROOT/primes" ]]; then
+      echo "AZURE_COMPLEX_URL=$BASE_HINT"
+    fi
     echo -n "smoke: "
     if curl -fsS --max-time 60 "$URL"; then
       echo

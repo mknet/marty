@@ -1,0 +1,18 @@
+[package]
+name = "alt-azure-02-complex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Azure Functions custom-handler twin of benchmarks/complex marty-sync"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[[bin]]
+name = "handler"
+path = "src/main.rs"
+
+[dependencies]
+marty-bench-shared = { path = "../../../benchmarks/complex/shared" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+warp = "0.3"
