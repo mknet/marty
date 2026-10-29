@@ -1,0 +1,14 @@
+[package]
+name = "alt-aws-lambda-04-complex"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "AWS Lambda Function URL twin of benchmarks/complex marty-sync (primes/fib/matrix)"
+
+# Standalone crate (not a Marty workspace member).
+[workspace]
+
+[dependencies]
+lambda_http = "1"
+marty-bench-shared = { path = "../../../benchmarks/complex/shared" }
+tokio = { version = "1", features = ["macros"] }

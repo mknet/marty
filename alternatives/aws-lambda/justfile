@@ -13,6 +13,7 @@ iam_role := env("CARGO_LAMBDA_IAM_ROLE", "")
 fn_01 := "alt-aws-lambda-01-basic"
 fn_02 := "alt-aws-lambda-02-dynamodb"
 fn_03 := "alt-aws-lambda-03-mysql"
+fn_04 := "alt-aws-lambda-04-complex"
 rds_id := "alt-aws-lambda-03-mysql"
 rds_sg_name := "alt-aws-lambda-03-mysql-sg"
 rds_user := "marty"
@@ -70,7 +71,7 @@ build-one example: install-cargo-lambda
     cd "{{ justfile_directory() }}/{{ example }}"
     cargo lambda build --release --arm64
 
-build: (build-one "01_basic") (build-one "02_dynamodb") (build-one "03_mysql")
+build: (build-one "01_basic") (build-one "02_dynamodb") (build-one "03_mysql") (build-one "04_complex")
 
 watch example="01_basic": install-cargo-lambda
     #!/usr/bin/env bash
@@ -278,6 +279,7 @@ deploy-one example: (build-one example) whoami
       01_basic) PKG="{{ fn_01 }}" ;;
       02_dynamodb) PKG="{{ fn_02 }}" ;;
       03_mysql) PKG="{{ fn_03 }}" ;;
+      04_complex) PKG="{{ fn_04 }}" ;;
       *) echo "unknown example: {{ example }}" >&2; exit 1 ;;
     esac
     cd "{{ justfile_directory() }}/{{ example }}"
@@ -289,7 +291,16 @@ deploy-one example: (build-one example) whoami
     if [[ "{{ example }}" == "02_dynamodb" ]]; then
       args+=(--env-var "TABLE_NAME={{ table_02 }}")
     fi
+    # Fair complex compare: match COST.md sketch (128 MB); timeout for matrix.
+    if [[ "{{ example }}" == "04_complex" ]]; then
+      args+=(--memory 128 --timeout 30)
+    fi
     cargo lambda "${args[@]}"
+    if [[ "{{ example }}" == "04_complex" ]]; then
+      URL="$(aws lambda get-function-url-config --function-name "$PKG" --region "{{ region }}" \
+        --query FunctionUrl --output text 2>/dev/null || echo '')"
+      echo "AWS_COMPLEX_URL=${URL%/}"
+    fi
 
 # Deploy Lambdas + DynamoDB. Optional paid MySQL: `just deploy with_rds=1`
 deploy with_rds="0": whoami install-cargo-lambda _ensure-table-02
@@ -350,6 +361,7 @@ destroy: whoami
     delete_fn "{{ fn_01 }}"
     delete_fn "{{ fn_02 }}"
     delete_fn "{{ fn_03 }}"
+    delete_fn "{{ fn_04 }}"
 
     if aws dynamodb describe-table --table-name "{{ table_02 }}" --region "$REGION" >/dev/null 2>&1; then
       echo "deleting table {{ table_02 }}"
