@@ -94,7 +94,7 @@ On a **brand-new** Function App, `config-zip` may still print `Bad Request` / `S
 
 ### 7. Platform noise (not blockers for this sample)
 
-- **Linux Consumption EOL** warning (Sep 2028) → Flex Consumption recommended later; this sample stays on classic Consumption for a simple custom-handler zip.
+- **Linux Consumption EOL** warning: the plan retires **Sept 30, 2028**, is already removed from the portal / VS / VS Code (CLI still works), and there is **no in-place migration** to Flex Consumption (new app + redeploy; `az functionapp flex-migration` helps). This sample stays on classic Consumption for a simple custom-handler zip. Flex supports custom handlers, but bills at least **1 s × 512 MB** per active period (~$13 per million sparse requests); see [`README.md`](README.md#plan-lifecycle-linux-consumption-retires) and [`docs/COST.md`](../../docs/COST.md).
 - Custom handler on Linux Consumption: zip deploy via publish-profile/Kudu has historically **stripped the executable bit**; RBAC/`config-zip` → `WEBSITE_RUN_FROM_PACKAGE` blob is the safer path (what `az` uses here).
 - Handler must be **Linux x86_64** (we use musl static) even when building on Apple Silicon.
 
