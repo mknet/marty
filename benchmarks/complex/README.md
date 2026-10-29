@@ -103,7 +103,7 @@ After the Go-parity pass and the CGI stdout fixes (see **Run K/L** in [`RESULTS-
 
 Variant map (hosting-like vs prefork, what we mirror, what we don’t fix in-library): [`docs/CGI-VARIANTS.md`](../../docs/CGI-VARIANTS.md).
 
-The default image (prefork + `mod_cgi` + mod_php) is the historical / lab reference, but it is **not** what shared hosters run. [`tools/hosting-probe/`](../../tools/hosting-probe/) reported for all-inkl.com: Ubuntu 24.04 / Apache 2.4.58, `mod_cgid` (CGI stdio are unix sockets ⇒ threaded MPM), CGIs executed as the site user via suexec with a cleaned environment, KeepAlive on, chunked responses, HTTP/2 over TLS. `docker/Dockerfile.hosting` mirrors that stack (PHP via php-fpm, CGIs owned by and run as user `site`):
+The default image (prefork + `mod_cgi` + mod_php) is the historical / lab reference, but it is **not** what shared hosters run. [`tools/hosting-probe/`](../../tools/hosting-probe/) on **all-inkl.com** and **Hetzner Webhosting S**: Ubuntu 24.04 / Debian 13, `mod_cgid`-class (CGI stdio are unix sockets ⇒ threaded MPM), CGIs as the site user with a cleaned environment, KeepAlive on, chunked responses, HTTP/2 over TLS. Outside head-to-head: [`RESULTS-SNAPSHOTS.md` Run N](RESULTS-SNAPSHOTS.md#run-n--outside-compare-hetzner-s-vs-all-inkl-2026-10-28). `docker/Dockerfile.hosting` mirrors that stack (PHP via php-fpm, CGIs owned by and run as user `site`):
 
 ```bash
 just docker-smoke-hosting          # build + smoke the hosting-like image

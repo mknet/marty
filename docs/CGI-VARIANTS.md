@@ -8,7 +8,9 @@ Walk **most common for our target → historical / lab** below. Problems are cal
 
 **What it is:** Threaded MPM; CGI stdin/stdout are **unix sockets** (`mod_cgid`). The binary runs as the **site/FTP user** through suexec with a **cleaned environment** (CGI/1.1 + `HTTP_*` / `SSL_*`; `.htaccess` `SetEnv` does **not** reach the CGI). Often KeepAlive, chunked CGI, HTTP/2 + TLS in front.
 
-**Why it matters:** This is the **primary Marty target** (all-inkl–class). Upload a static musl binary → `cgi-bin/` → `chmod 755`.
+**Why it matters:** This is the **primary Marty target** (all-inkl– / Hetzner-S–class). Upload a static musl binary → `cgi-bin/` → `chmod 755`.
+
+**Verified hosts (Oct 2026):** all-inkl (Ubuntu 24.04) and Hetzner Webhosting S (Debian 13) — both socket/cgid-class, site user, KeepAlive + HTTP/2. See [`HOSTERS.md`](HOSTERS.md) and outside Run N in [`RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md#run-n--outside-compare-hetzner-s-vs-all-inkl-2026-10-28).
 
 **Local mirror:** [`benchmarks/complex/docker/Dockerfile.hosting`](../benchmarks/complex/docker/Dockerfile.hosting)  
 `just bench-fair-hosting` / `just docker-smoke-hosting` in `benchmarks/complex/`.
@@ -19,14 +21,14 @@ Walk **most common for our target → historical / lab** below. Problems are cal
 
 | Issue | Note |
 |-------|------|
-| Go CGI OOM at arena init | Address-space limits on shared hosts — negative proof in complex bench |
-| No `SetEnv` into CGI | Configure via query/path/files, not Apache env toggles |
-| TLS/RTT floor (~40–60 ms) | Dominates light routes; fair compares need this in mind |
+| Go CGI OOM at arena init | Address-space limits on shared hosts — negative proof on all-inkl; keep in complex bench |
+| No `SetEnv` into CGI | Configure via query/path/files, not Apache env toggles (confirmed all-inkl; assume same on suexec-style hosts) |
+| TLS/RTT floor | Dominates light routes; absolute ms differ by client↔host path (Hetzner vs all-inkl outside from one laptop) |
 | Fair-use / load | Keep outside benches low-volume |
 
 ## 2. Classic lab / many tutorials — `mpm_prefork` + `mod_cgi` (+ often `mod_php`)
 
-**What it is:** One Apache process per connection; CGI stdio are **pipes**. Common in Docker PHP images and older docs. Easy to stand up; **not** what all-inkl-style hosts run.
+**What it is:** One Apache process per connection; CGI stdio are **pipes**. Common in Docker PHP images and older docs. Easy to stand up; **not** what all-inkl– / Hetzner-S–style hosts run.
 
 **Local mirror:** [`benchmarks/complex/docker/Dockerfile`](../benchmarks/complex/docker/Dockerfile) (default fair bench).  
 `just bench-fair` in `benchmarks/complex/`.
@@ -45,9 +47,7 @@ Snapshots: [`benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RES
 
 **What it is:** Same CGI binary; pretty paths (`/routing/hello/Doc` → `cgi-bin/…/hello/Doc`) with `RewriteRule` + `[PT]`. Needs `AllowOverride` / rewrite enabled (typical on shared hosts that allow `.htaccess`).
 
-**Examples today:** `examples/*/htaccess.basic.in`, `examples/apache-combined-vhost.htaccess.in` (copied to `dist.htaccess` on `just linux`).
-
-**Planned DX:** generate these from the app’s routes (see [DIRECTION](DIRECTION.md#planned-features)).
+**DX:** feature **`htaccess`** — alias in `[package.metadata.marty]`, binary = `[package].name`; `build.rs` calls `write_next_to_binary_from_manifest()` → **`{binary}.htaccess`** beside the binary. Consumer walkthrough: [README — Your app: binary + `.htaccess`](../README.md#your-app-binary--htaccess) and [`examples/02_routing/README.md`](../examples/02_routing/README.md). App `Router` patterns are **not** mirrored as rewrite rules (they use `PATH_INFO`).
 
 ## 4. Less common (aware, not first-class)
 

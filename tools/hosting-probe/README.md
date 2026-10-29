@@ -1,8 +1,9 @@
 # Hosting probe
 
-Read-only CGI probes that tell us what a shared-hosting Apache (e.g. all-inkl)
+Read-only CGI probes that tell us what a shared-hosting Apache
 looks like from the inside and from the outside, so the setup can be mirrored
 in the local Docker benchmark **without** putting load on the provider.
+Verified so far: **all-inkl** and **Hetzner Webhosting S** (both socket/cgid-class — see [`docs/HOSTERS.md`](../../docs/HOSTERS.md)).
 
 A handful of sequential requests is all it takes — no `hey`, no concurrency.
 
