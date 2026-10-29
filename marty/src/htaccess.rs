@@ -4,7 +4,7 @@
 //! [`crate::Router`] patterns — those arrive as `PATH_INFO` after the rewrite.
 //!
 //! Enable Cargo feature **`htaccess`**. Full consumer `Cargo.toml` + musl upload notes:
-//! crate README section *Your app: binary + `.htaccess`*, and `examples/02_routing/README.md`.
+//! crate README *Quick start*, and `examples/02_routing/README.md`.
 //!
 //! ```toml
 //! [package.metadata.marty]

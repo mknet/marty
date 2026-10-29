@@ -2,7 +2,7 @@
 
 Sync [`marty::Router`](../../marty/src/router.rs) + **MySQL/MariaDB** (read + write). Target: **all-inkl–style** shared hosting (static musl CGI, DB usually on `localhost`). The `mysql` crate is built **without OpenSSL/aws-lc** (`minimal-rust`) so musl cross-builds stay simple; use `default-rustls` if you need TLS to a remote host.
 
-Deploy basics (`.htaccess`, musl): [`../02_routing/README.md`](../02_routing/README.md) and [root README](../../README.md#your-app-binary--htaccess).
+Deploy basics (`.htaccess`, musl): [`../02_routing/README.md`](../02_routing/README.md) and [root README — Quick start](../../README.md#quick-start).
 
 ## What it does
 

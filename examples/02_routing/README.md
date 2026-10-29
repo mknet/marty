@@ -2,7 +2,7 @@
 
 Sync [`marty::Router`](../../marty/src/router.rs) CGI — the recommended shared-hosting path.
 
-Also the **reference** for consumer deploy: package metadata → `.htaccess` next to the binary. Full write-up: [root README — Your app: binary + `.htaccess`](../../README.md#your-app-binary--htaccess).
+Also the **reference** for consumer deploy: package metadata → `.htaccess` next to the binary. Full write-up: [root README — Quick start](../../README.md#quick-start).
 
 ## Layout
 

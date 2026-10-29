@@ -5,7 +5,7 @@
 //! - Any other path → **404** with plain-text body `Not found`
 //!
 //! Deploy (`.htaccess` from `[package.metadata.marty]`, musl upload): see [`README.md`](../README.md)
-//! and the root README section *Your app: binary + `.htaccess`*.
+//! and the root README *Quick start*.
 //!
 //! For existing Axum handlers, see `examples/06_axum`.
 
