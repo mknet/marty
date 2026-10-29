@@ -1,6 +1,8 @@
-//! Shared primes / fibonacci / matrix algorithms for complex CGI benches.
+//! Shared primes / fibonacci / matrix algorithms for complex CGI benches
+//! and cloud alternative twins (AWS / Azure / Cloudflare / Scaleway).
 
 pub mod compute;
+pub mod dispatch;
 pub mod json;
 pub mod salt;
 
