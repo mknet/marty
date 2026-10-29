@@ -8,7 +8,48 @@ Workloads: `primes/400000`, `fibonacci/42`, `matrix/128`.
 
 **Use P50/P95 for comparisons**, not Avg alone — CGI runs often have long tails (Slow >> P95). Go’s **P50 can be much lower than Avg** (bimodal: many fast forks + some slow).
 
+## Run O — Outside: netcup EiWoMiSau (2026-10-29)
+
+Real shared host (netcup EiWoMiSau vhost), same client laptop and same uploaded `marty-sync` / `marty-axum` / PHP complex artifacts as Run N. `just outside` defaults: **N=40, C=2**, routes `primes/400000`, `fibonacci/42`, `matrix/128` (`?salt=0`), ~360 GETs + probes. Latency in ms.
+
+**Probe fingerprint:** Debian 12 (bookworm), nginx TLS front (`Server: nginx`) + Apache CGI (`SERVER_SOFTWARE=Apache`), CGI stdio = **pipes** (mod_cgi-class — unlike Hetzner/all-inkl sockets), site user `hosting*`, cwd under `…/<domain>/httpdocs/cgi-bin`, KeepAlive + HTTP/2. WCP **CGI-Unterstützung** must be on; upload path `httpdocs/cgi-bin/`.
+
+| Handler | Avg | P50 | P95 | req/s | 200s |
+|---------|-----|-----|-----|-------|------|
+| sync /primes | 75.4 | 71.6 | 150.2 | 25.80 | 40 |
+| sync /fibonacci | 75.8 | 72.9 | 136.3 | 25.64 | 40 |
+| sync /matrix | 76.6 | 72.6 | 146.7 | 25.60 | 40 |
+| axum /primes | 80.1 | 76.3 | 156.9 | 24.77 | 40 |
+| axum /fibonacci | 76.4 | 73.9 | 134.8 | 26.07 | 40 |
+| axum /matrix | 81.1 | 77.0 | 154.1 | 23.93 | 40 |
+| php /primes | 82.0 | 53.9 | 127.8 | 18.07 | 40 |
+| php /fibonacci | 74.0 | 45.2 | 120.7 | 20.38 | 40 |
+| php /matrix | 111.9 | 81.6 | 151.4 | 14.43 | 40 |
+
+**vs Run N (same client, sync P50):** Hetzner ~33 ms · all-inkl ~50–54 ms · **netcup ~72–73 ms**. Relative pattern still holds: sync ≈ axum; matrix → Marty ahead of PHP; light-route P50 is TLS/RTT-heavy (PHP can edge Marty on netcup). Host docs: [`docs/HOSTERS.md`](../../docs/HOSTERS.md). Cheaper netcup 1000-class plans remain unverified.
+
+### netcup light-route capacity (same day, not `just outside`)
+
+`marty-sync` `primes/10000?salt=0` only. Same client laptop as the Hetzner sketch below. Fair-use / not an SLA.
+
+| Load | Approx throughput | P50 | Notes |
+|------|-------------------|-----|-------|
+| Steady **320/min × 10 min** (~5.3 req/s, C=1) | ~5.2 req/s | ~73 ms | **3107× 200**, 0 errors; floor ≈ outside sync P50; host stayed healthy |
+| Grill **C=100 × ~2 min** (`hey -z 2m -c 100`) | ~**72** req/s overall (~62/s counting only 200s) | ~247 ms (200s only — biased) | **8367× 200** + 358 timeouts + 983 `connection refused` (~9700 attempts / ~135 s). Ban hit **during** the run; afterward 80/443 refused from the client IP for ≥20 min (upstream filter — not visible in customer WCP Fail2Ban). P50 of successes looks “better” than Hetzner’s queued ~430 ms only because netcup dropped load |
+
+#### Head-to-head vs Hetzner S (same workloads)
+
+| Scenario | Hetzner S | netcup EiWoMiSau |
+|----------|-----------|------------------|
+| Outside sync P50 (heavy routes) | ~33 ms | ~72–73 ms (~2.2×) |
+| 320/min × 10 min P50 | ~31 ms, all 200 | ~73 ms, all 200 (~2.3×) |
+| Grill C=100 throughput | ~**233** req/s, ~28k× 200, host up | ~**72** req/s, ~8.4k× 200 then IP ban |
+| Burst behaviour | queues (latency rises, stays up) | aborts + **client IP block** |
+
+**Takeaways:** calm / moderate traffic is fine on netcup (Marty works; latency ~2× Hetzner from this client). Aggressive parallel grills are **not** a fair netcup claim and can trip shared-host protection. Prefer `just outside` + low-rate steady tests for hoster docs; treat C=100 grills as stress/limit sketches only.
+
 ## Run N — Outside compare: Hetzner S vs all-inkl (2026-10-28)
+
 
 Real shared hosts, same client laptop, same uploaded `marty-sync` / `marty-axum` / PHP complex artifacts, `just outside` defaults: **N=40, C=2**, routes `primes/400000`, `fibonacci/42`, `matrix/128` (`?salt=0`), ~360 GETs + probes. Latency in ms. Go not compared (arena OOM on all-inkl; not re-probed on Hetzner).
 
