@@ -27,7 +27,9 @@ fn main() {
     session.insert("count", next.to_string());
 
     let mut router = Router::new();
-    router.get("/", move |_| format!("03_session: visit counter = {next}\n"));
+    router.get("/", move |_| {
+        format!("03_session: visit counter = {next}\n")
+    });
     router.fallback(|_| (404u16, "Not found\n"));
 
     let resp = store.save(&session, router.handle_request(req));

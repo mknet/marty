@@ -1,7 +1,7 @@
 //! Query string and `application/x-www-form-urlencoded` helpers (no serde).
 
-use crate::cgi::CgiRequest;
 use crate::MetaVariableKind;
+use crate::cgi::CgiRequest;
 use std::collections::HashMap;
 
 /// Decode `application/x-www-form-urlencoded` / query bytes into owned key/value pairs.

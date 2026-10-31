@@ -151,7 +151,9 @@ pub fn render(mounts: &[Mount<'_>]) -> String {
     out.push('\n');
     out.push_str("<IfModule mod_rewrite.c>\n");
     out.push_str("RewriteEngine On\n");
-    out.push_str("# If the app lives in a subdirectory, set the prefix here, e.g. RewriteBase /myapp/\n");
+    out.push_str(
+        "# If the app lives in a subdirectory, set the prefix here, e.g. RewriteBase /myapp/\n",
+    );
     out.push_str("#RewriteBase /\n");
     out.push_str(&render_rules(mounts));
     out.push_str("</IfModule>\n");
@@ -233,10 +235,7 @@ pub fn owned_mount_from_cargo_toml(path: impl AsRef<Path>) -> io::Result<OwnedMo
     let binary = package_name(&text).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "{}: missing [package] name",
-                path.as_ref().display()
-            ),
+            format!("{}: missing [package] name", path.as_ref().display()),
         )
     })?;
     let (alias, path_info, cgi_dir) = metadata_marty(&text).ok_or_else(|| {
@@ -341,7 +340,10 @@ mod tests {
     #[test]
     fn basic_mount_single_rule() {
         let rules = render_rules(&[Mount::new("basic", "marty-01-basic")]);
-        assert_eq!(rules, "RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]\n");
+        assert_eq!(
+            rules,
+            "RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]\n"
+        );
     }
 
     #[test]
