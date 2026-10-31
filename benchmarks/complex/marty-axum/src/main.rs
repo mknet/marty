@@ -25,7 +25,10 @@ fn salt_from_query(q: &SaltQuery) -> u64 {
 
 fn json_no_cache(body: Vec<u8>) -> impl IntoResponse {
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-store, no-cache, must-revalidate"),

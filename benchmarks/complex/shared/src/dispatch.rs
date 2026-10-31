@@ -19,11 +19,7 @@ pub fn normalize_path(path: &str) -> &str {
     let path = path.trim_end_matches('/');
     let path = if path.is_empty() { "/" } else { path };
     if let Some(rest) = path.strip_prefix("/api") {
-        if rest.is_empty() {
-            "/"
-        } else {
-            rest
-        }
+        if rest.is_empty() { "/" } else { rest }
     } else {
         path
     }

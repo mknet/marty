@@ -54,10 +54,7 @@ impl SessionStore {
             return Session::default();
         };
         match verify_and_decode(&self.secret, raw) {
-            Some(data) => Session {
-                data,
-                dirty: false,
-            },
+            Some(data) => Session { data, dirty: false },
             None => Session::default(),
         }
     }

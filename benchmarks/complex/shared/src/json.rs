@@ -13,13 +13,7 @@ pub fn write_compute_u64(out: &mut Vec<u8>, route: &str, salt: u64, result: u64)
     out.push(b'}');
 }
 
-pub fn write_compute_matrix(
-    out: &mut Vec<u8>,
-    route: &str,
-    salt: u64,
-    size: usize,
-    checksum: f64,
-) {
+pub fn write_compute_matrix(out: &mut Vec<u8>, route: &str, salt: u64, size: usize, checksum: f64) {
     out.clear();
     out.extend_from_slice(b"{\"route\":\"");
     out.extend_from_slice(route.as_bytes());

@@ -1,7 +1,7 @@
 //! Cookie parsing and `Set-Cookie` helpers for sync CGI (no tower-cookies).
 
-use crate::cgi::{CgiRequest, CgiResponse};
 use crate::MetaVariableKind;
+use crate::cgi::{CgiRequest, CgiResponse};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 

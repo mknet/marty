@@ -67,8 +67,7 @@ fn db_opts() -> Result<Opts, String> {
         }
     }
     let file = load_conf_first(&paths);
-    let host = env_or_file("MARTY_MYSQL_HOST", "host", &file)
-        .unwrap_or_else(|| "localhost".into());
+    let host = env_or_file("MARTY_MYSQL_HOST", "host", &file).unwrap_or_else(|| "localhost".into());
     let user = env_or_file("MARTY_MYSQL_USER", "user", &file)
         .ok_or("missing user (set MARTY_MYSQL_USER or marty_mysql.conf)")?;
     let pass = env_or_file("MARTY_MYSQL_PASSWORD", "password", &file).unwrap_or_default();

@@ -343,13 +343,10 @@ impl PathPattern {
     fn match_path(&self, path: &str) -> Option<HashMap<String, String>> {
         let path_segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-        let catch_all = self
-            .segments
-            .last()
-            .and_then(|s| match s {
-                PathSegment::CatchAll(name) => Some(name.as_str()),
-                _ => None,
-            });
+        let catch_all = self.segments.last().and_then(|s| match s {
+            PathSegment::CatchAll(name) => Some(name.as_str()),
+            _ => None,
+        });
 
         if let Some(catch_name) = catch_all {
             let fixed = &self.segments[..self.segments.len() - 1];
