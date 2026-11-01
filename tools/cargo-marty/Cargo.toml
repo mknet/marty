@@ -1,0 +1,18 @@
+[package]
+name = "cargo-marty"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.86"
+description = "cargo marty: build a musl CGI bundle for shared hosting and deploy it over SFTP/FTPS (hosters differ in data, not code)."
+repository = "https://github.com/mknet/marty"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = ["cgi", "deploy", "cargo-subcommand", "shared-hosting", "musl"]
+categories = ["development-tools::cargo-plugins", "web-programming"]
+include = ["src/**", "presets/**", "Cargo.toml", "README.md", "LICENSE-APACHE"]
+
+[dependencies]
+cargo_metadata = "0.23"
+marty = { version = "0.2.1", path = "../../marty", default-features = false, features = ["htaccess"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1"

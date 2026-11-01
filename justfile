@@ -1,6 +1,6 @@
 # Marty workspace — shared CGI smoke (`scripts/cgi-example-smoke.sh`) and musl cross-build (`_linux_musl`).
 # From repo root: `just setup`, `just smoke-01-basic` … `just smoke-05-sqlite` / `smoke-07-mysql`, or `cd examples/… && just`
-# Requires: just, bash, python3. Hurl: `just setup`.
+# Requires: just, bash, python3 (example `install` recipes). Hurl: `just setup`.
 
 default:
     @just --list
@@ -8,90 +8,14 @@ default:
 setup:
     cargo install hurl --locked
 
-# Shared: `cargo zigbuild` + ELF check for `package` (workspace member). Used from `examples/*/linux.just`.
+# Shared musl build + deploy bundle for `package` (workspace member). Used from `examples/*/linux.just`.
+# Single source: `tools/cargo-marty` (`cargo marty build`), run from the workspace without installing.
 _linux_musl package triple:
     #!/usr/bin/env bash
     set -euo pipefail
-    ROOT="{{ justfile_directory() }}"
-    export PATH="${HOME}/.cargo/bin:${PATH}}"
-    PKG="{{package}}"
-    TRIPLE="{{triple}}"
-
-    if ! command -v rustup >/dev/null 2>&1; then
-      echo "error: rustup not found" >&2
-      exit 1
-    fi
-
-    if ! command -v zig >/dev/null 2>&1; then
-      echo "error: zig not on PATH (required by cargo-zigbuild). Examples: brew install zig | apt install zig" >&2
-      exit 1
-    fi
-
-    rustup target add "$TRIPLE"
-
-    if ! command -v cargo-zigbuild >/dev/null 2>&1; then
-      echo "Installing cargo-zigbuild into ~/.cargo/bin …"
-      cargo install cargo-zigbuild --locked
-    fi
-
-    cd "$ROOT"
-    if ! command -v python3 >/dev/null 2>&1; then
-      echo "error: python3 required (cargo metadata → target_directory)" >&2
-      exit 1
-    fi
-    TARGET_DIR="$(cargo metadata --format-version=1 --no-deps | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
-
-    cargo zigbuild -p "$PKG" --release --target "$TRIPLE"
-
-    OUT="$TARGET_DIR/$TRIPLE/release/$PKG"
-    if [[ ! -f "$OUT" ]]; then
-      OUT="$TARGET_DIR/release/$PKG"
-    fi
-    if [[ ! -f "$OUT" ]]; then
-      echo "error: binary not found under $TARGET_DIR/$TRIPLE/release/ or $TARGET_DIR/release/" >&2
-      exit 1
-    fi
-
-    info="$(file -b "$OUT")"
-    case "$TRIPLE" in
-      x86_64-unknown-linux-musl)
-        if ! grep -Eiq 'ELF.*x86-64' <<<"$info"; then
-          echo "error: expected Linux x86_64 ELF for $TRIPLE, got: $info" >&2
-          echo "hint: zig + cargo-zigbuild must cooperate; see https://github.com/rust-cross/cargo-zigbuild." >&2
-          echo "hint: Zig 0.16+ can still yield a macOS binary with some toolchains — try Zig 0.13.x–0.15.x if this persists." >&2
-          exit 1
-        fi
-        ;;
-      aarch64-unknown-linux-musl)
-        if ! grep -Eiq 'ELF.*(aarch64|ARM aarch64)' <<<"$info"; then
-          echo "error: expected Linux aarch64 ELF for $TRIPLE, got: $info" >&2
-          echo "hint: zig + cargo-zigbuild must cooperate; see https://github.com/rust-cross/cargo-zigbuild." >&2
-          echo "hint: Zig 0.16+ can still yield a macOS binary with some toolchains — try Zig 0.13.x–0.15.x if this persists." >&2
-          exit 1
-        fi
-        ;;
-      *)
-        echo "error: unsupported triple $TRIPLE" >&2
-        exit 1
-        ;;
-    esac
-
-    # Optional sibling `{package}.htaccess` from `marty::htaccess::write_next_to_binary*`
-    # (examples). Tools like hosting-probe have no mount — binary-only deploy is fine.
-    HTA="${OUT}.htaccess"
-    DEPLOY="$TARGET_DIR/deploy/$PKG"
-    mkdir -p "$DEPLOY/cgi-bin"
-    cp -f "$OUT" "$DEPLOY/cgi-bin/$PKG"
-    chmod 755 "$DEPLOY/cgi-bin/$PKG"
-    if [[ -f "$HTA" ]]; then
-      cp -f "$HTA" "$DEPLOY/.htaccess"
-      echo "linux musl ok: $OUT ($TRIPLE)"
-      echo "deploy bundle: $DEPLOY  (cgi-bin/$PKG + .htaccess)"
-    else
-      rm -f "$DEPLOY/.htaccess"
-      echo "linux musl ok: $OUT ($TRIPLE)"
-      echo "deploy bundle: $DEPLOY  (cgi-bin/$PKG; no .htaccess — package has no htaccess build.rs)"
-    fi
+    export PATH="${HOME}/.cargo/bin:${PATH}"
+    cd "{{ justfile_directory() }}"
+    cargo run -q -p cargo-marty -- marty build -p "{{package}}" --target "{{triple}}"
 
 smoke-01-basic:
     just -f examples/01_basic/justfile smoke

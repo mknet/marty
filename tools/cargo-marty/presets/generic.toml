@@ -1,0 +1,4 @@
+# Any Apache shared host with cgi-bin under the document root. Set docroot in your target.
+protocol = "sftp"
+cgi_dir = "{docroot}/cgi-bin"
+notes = "Set docroot (relative to the login dir, e.g. public_html or httpdocs). cgi_dir defaults to {docroot}/cgi-bin. Run tools/hosting-probe once before trusting a new plan."
