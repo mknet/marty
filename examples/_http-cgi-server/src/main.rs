@@ -27,9 +27,10 @@ fn main() {
     }
 }
 
-fn read_http_request(
-    mut stream: &TcpStream,
-) -> Option<(String, String, String, HashMap<String, String>, Vec<u8>)> {
+/// Method, path, query string, lowercased headers, body.
+type HttpRequest = (String, String, String, HashMap<String, String>, Vec<u8>);
+
+fn read_http_request(mut stream: &TcpStream) -> Option<HttpRequest> {
     let mut buf = Vec::with_capacity(4096);
     let mut chunk = [0u8; 4096];
 
@@ -105,8 +106,8 @@ fn header_end(buf: &[u8]) -> Option<usize> {
     buf.windows(2).position(|w| w == b"\n\n").map(|i| i + 2)
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    let Some((method, path, query_string, headers, body)) = read_http_request(&mut stream) else {
+fn handle_connection(stream: TcpStream) {
+    let Some((method, path, query_string, headers, body)) = read_http_request(&stream) else {
         send_error(stream, "400 Bad Request");
         return;
     };
@@ -225,10 +226,10 @@ fn handle_cgi_request(
     match output {
         Ok(mut child) => {
             // Send any input to the CGI script
-            if let Some(mut stdin) = child.stdin.take() {
-                if !request_body.is_empty() {
-                    stdin.write_all(&request_body).unwrap();
-                }
+            if let Some(mut stdin) = child.stdin.take()
+                && !request_body.is_empty()
+            {
+                stdin.write_all(&request_body).unwrap();
             }
 
             // Read the output
@@ -277,7 +278,7 @@ fn send_cgi_response(mut stream: TcpStream, cgi_output: &str) {
         for line in headers.lines() {
             let key = line.split(':').next().unwrap_or("").trim();
             if key.eq_ignore_ascii_case("status") {
-                let value = line.splitn(2, ':').nth(1).unwrap_or("200").trim();
+                let value = line.split_once(':').map_or("200", |(_, v)| v).trim();
                 status_line = format!("HTTP/1.1 {}\r\n", value);
             } else if !line.is_empty() {
                 out_headers.push_str(line);
