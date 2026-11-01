@@ -4,7 +4,7 @@ All notable changes to the **marty** library crate are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking API changes).
 
-## [0.2.1] — 2026-10-31
+## [0.2.1] — 2026-11-01
 
 ### Added
 
