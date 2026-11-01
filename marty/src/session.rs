@@ -2,6 +2,10 @@
 //!
 //! Enable Cargo feature **`session`**. Values are stringly; keep payloads small.
 //!
+//! The cookie value is `v1.<exp>.<payload>.<sig>`: the HMAC covers the expiry, so a copied
+//! cookie stops verifying after [`SessionStore::max_age`] even if the client ignores
+//! `Max-Age`. `exp = 0` means no expiry (`max_age(None)`).
+//!
 //! Build the store with [`SessionStore::from_config`] so a missing secret fails loudly
 //! instead of falling back to a public default:
 //!
@@ -19,6 +23,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -70,6 +75,9 @@ impl SessionStore {
         self
     }
 
+    /// Lifetime in seconds (default 600), written as `Max-Age` **and** as the signed expiry
+    /// checked by [`Self::load`]. `None`: browser-session cookie without a signed expiry, so a
+    /// copied value stays valid until the secret changes.
     pub fn max_age(mut self, secs: Option<u64>) -> Self {
         self.max_age = secs;
         self
@@ -80,24 +88,28 @@ impl SessionStore {
         self
     }
 
-    /// Load session from the request cookie (empty session if missing/invalid).
+    /// Load session from the request cookie (empty session if missing, invalid, or expired).
     pub fn load(&self, req: &CgiRequest) -> Session {
         let cookies = req.cookies();
         let Some(raw) = cookies.get(&self.cookie_name) else {
             return Session::default();
         };
-        match verify_and_decode(&self.secret, raw) {
+        match verify_and_decode(&self.secret, raw, unix_now()) {
             Some(data) => Session { data, dirty: false },
             None => Session::default(),
         }
     }
 
-    /// Attach a `Set-Cookie` when the session was mutated (or always if `force`).
+    /// Attach a `Set-Cookie` when the session was mutated. The signed expiry restarts at
+    /// every save; a session that is only read keeps its old expiry.
     pub fn save(&self, session: &Session, resp: CgiResponse) -> CgiResponse {
         if !session.dirty {
             return resp;
         }
-        let value = sign_and_encode(&self.secret, &session.data);
+        let exp = self
+            .max_age
+            .map_or(0, |secs| unix_now().saturating_add(secs));
+        let value = sign_and_encode(&self.secret, &session.data, exp);
         let mut cookie = Cookie::new(&self.cookie_name, value)
             .http_only(true)
             .same_site(SameSite::Lax)
@@ -133,16 +145,32 @@ impl Session {
     }
 }
 
-fn sign_and_encode(secret: &[u8], data: &HashMap<String, String>) -> String {
-    let payload = encode_map(data);
-    let sig = hmac_hex(secret, payload.as_bytes());
-    format!("{payload}.{sig}")
+const FORMAT: &str = "v1";
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
-fn verify_and_decode(secret: &[u8], raw: &str) -> Option<HashMap<String, String>> {
-    let (payload, sig) = raw.rsplit_once('.')?;
-    let expected = hmac_hex(secret, payload.as_bytes());
+/// `v1.<exp>.<payload>.<sig>`; the signature covers everything before the last `.`.
+fn sign_and_encode(secret: &[u8], data: &HashMap<String, String>, exp: u64) -> String {
+    let signed = format!("{FORMAT}.{exp}.{}", encode_map(data));
+    let sig = hmac_hex(secret, signed.as_bytes());
+    format!("{signed}.{sig}")
+}
+
+fn verify_and_decode(secret: &[u8], raw: &str, now: u64) -> Option<HashMap<String, String>> {
+    let (signed, sig) = raw.rsplit_once('.')?;
+    let expected = hmac_hex(secret, signed.as_bytes());
     if !constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
+        return None;
+    }
+    let rest = signed.strip_prefix(FORMAT)?.strip_prefix('.')?;
+    let (exp, payload) = rest.split_once('.')?;
+    let exp: u64 = exp.parse().ok()?;
+    if exp != 0 && now >= exp {
         return None;
     }
     Some(parse_urlencoded(payload))
@@ -213,10 +241,12 @@ mod tests {
         let secret = b"test-secret-key-please-rotate";
         let mut map = HashMap::new();
         map.insert("count".into(), "3".into());
-        let raw = sign_and_encode(secret, &map);
-        let back = verify_and_decode(secret, &raw).unwrap();
+        let raw = sign_and_encode(secret, &map, 2_000);
+        assert!(raw.starts_with("v1.2000.count=3."), "{raw}");
+        let back = verify_and_decode(secret, &raw, 1_000).unwrap();
         assert_eq!(back.get("count").map(String::as_str), Some("3"));
-        assert!(verify_and_decode(secret, &(raw + "x")).is_none());
+        assert!(verify_and_decode(secret, &(raw.clone() + "x"), 1_000).is_none());
+        assert!(verify_and_decode(b"other-secret", &raw, 1_000).is_none());
     }
 
     #[test]
@@ -234,11 +264,48 @@ mod tests {
     }
 
     #[test]
+    fn expiry_is_signed_and_enforced() {
+        let secret = b"test-secret-key-please-rotate";
+        let mut map = HashMap::new();
+        map.insert("user".into(), "42".into());
+        let raw = sign_and_encode(secret, &map, 1_000);
+        assert!(verify_and_decode(secret, &raw, 999).is_some());
+        assert!(verify_and_decode(secret, &raw, 1_000).is_none());
+        assert!(verify_and_decode(secret, &raw, 5_000).is_none());
+
+        // Pushing the expiry forward breaks the signature.
+        let forged = raw.replacen("v1.1000.", "v1.9999999999.", 1);
+        assert!(verify_and_decode(secret, &forged, 5_000).is_none());
+
+        // exp = 0: no expiry.
+        let forever = sign_and_encode(secret, &map, 0);
+        assert!(verify_and_decode(secret, &forever, u64::MAX).is_some());
+    }
+
+    #[test]
+    fn pre_v1_cookies_are_rejected() {
+        // 0.2.0 format: `<payload>.<hmac(payload)>`.
+        let secret = b"test-secret-key-please-rotate";
+        let payload = "count=3";
+        let old = format!("{payload}.{}", hmac_hex(secret, payload.as_bytes()));
+        assert!(verify_and_decode(secret, &old, 1).is_none());
+    }
+
+    #[test]
+    fn values_with_dots_survive() {
+        let mut map = HashMap::new();
+        map.insert("next".into(), "/a.b/c.d".into());
+        let raw = sign_and_encode(b"s", &map, 0);
+        let back = verify_and_decode(b"s", &raw, 1).unwrap();
+        assert_eq!(back.get("next").map(String::as_str), Some("/a.b/c.d"));
+    }
+
+    #[test]
     fn percent_roundtrip_in_map() {
         let mut map = HashMap::new();
         map.insert("k".into(), "a/b c".into());
-        let raw = sign_and_encode(b"s", &map);
-        let back = verify_and_decode(b"s", &raw).unwrap();
+        let raw = sign_and_encode(b"s", &map, 0);
+        let back = verify_and_decode(b"s", &raw, 1).unwrap();
         assert_eq!(back.get("k").map(String::as_str), Some("a/b c"));
     }
 }
