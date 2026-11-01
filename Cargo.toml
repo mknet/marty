@@ -23,6 +23,7 @@ members = [
 ]
 # Cloud alternatives keep their own Cargo.lock / deps (Lambda, GCF, …).
 exclude = [
+    "playground",
     "alternatives/aws-lambda/01_basic",
     "alternatives/aws-lambda/02_dynamodb",
     "alternatives/aws-lambda/03_mysql",

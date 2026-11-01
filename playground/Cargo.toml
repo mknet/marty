@@ -1,0 +1,27 @@
+[package]
+name = "marty-playground"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Minimal Marty CGI app to try `cargo marty` end to end."
+
+# Pretty URL: /playground/… → cgi-bin/marty-playground/… (build.rs writes the .htaccess block).
+[package.metadata.marty]
+alias = "playground"
+path_info = true
+
+# Standalone project, like a user's own repo (not part of the marty workspace).
+[workspace]
+
+[dependencies]
+# After marty 0.2.1 is on crates.io: marty = { version = "0.2", default-features = false, features = ["sync-cgi", "session"] }
+marty = { path = "../marty", default-features = false, features = ["sync-cgi", "session"] }
+
+[build-dependencies]
+marty = { path = "../marty", default-features = false, features = ["htaccess"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
