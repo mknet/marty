@@ -183,7 +183,9 @@ Per-provider stores: [`../alternatives/README.md`](../alternatives/README.md) (s
 - US providers remain subject to US law even in EU regions; AWS runs a separate European Sovereign Cloud (legal adequacy is per customer).
 - EU FaaS exists: **Scaleway** (FR; regions fr-par, nl-ams, pl-waw) with a managed Rust runtime, cheapest per request in the tables above, but still its own entry point and CLI.
 - OVH, STACKIT, IONOS, Hetzner: no Lambda-like FaaS. Clever Cloud functions (WASM) were not GA when checked.
-- Do not overclaim: sovereignty is about **jurisdiction and exit**, not security.
+- Do not overclaim: sovereignty is about **jurisdiction and exit**. Threat boundaries for the same hosts are in [`SECURITY.md`](SECURITY.md).
+
+Product situations (latency, flat bill, independence): [`DIRECTION.md` — Why ship on Marty](DIRECTION.md#why-ship-on-marty).
 
 ## How to read this
 

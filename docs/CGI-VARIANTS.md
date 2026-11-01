@@ -65,3 +65,4 @@ Snapshots: [`benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RES
 2. **Regress on (1) and (2)** — Docker recipes above.  
 3. **Don’t invent library features** for (2)-only pathologies unless they also help (1).  
 4. **Prove a new hoster** with `hosting-probe` once, then optional outside smoke.
+5. **Trust boundaries** for these shapes (suexec, files, sessions, cloud twins) → [`SECURITY.md`](SECURITY.md).

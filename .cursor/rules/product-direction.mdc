@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Product direction
 
-Read [`docs/DIRECTION.md`](docs/DIRECTION.md), [`docs/CGI-VARIANTS.md`](docs/CGI-VARIANTS.md), [`docs/COST.md`](docs/COST.md).
+Read [`docs/DIRECTION.md`](docs/DIRECTION.md), [`docs/CGI-VARIANTS.md`](docs/CGI-VARIANTS.md), [`docs/COST.md`](docs/COST.md), [`docs/SECURITY.md`](docs/SECURITY.md).
 
 - **Target:** shared hosting CGI (upload one static binary), not VPS/long-lived servers.
 - **Default:** `sync-cgi` / `marty::Router`. Prefer this for new examples, APIs, and docs.

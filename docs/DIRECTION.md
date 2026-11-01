@@ -3,6 +3,8 @@
 Decision source for scope and defaults. Deeper notes:
 
 - CGI stacks & Docker maps → [`CGI-VARIANTS.md`](CGI-VARIANTS.md)
+- Security boundaries (suexec, secrets, sessions) → [`SECURITY.md`](SECURITY.md)
+- State with one process per request (sessions, SQLite, MySQL, migrations) → [`STATE.md`](STATE.md)
 - Cost sketch (shared hosting vs cloud functions) → [`COST.md`](COST.md)
 - EU shared hosters (prices, SSH, CGI status) → [`HOSTERS.md`](HOSTERS.md)
 - Hosting measurements → root [README](../README.md#shared-hosting-all-inkl-style), [`benchmarks/complex/`](../benchmarks/complex/)
@@ -10,6 +12,30 @@ Decision source for scope and defaults. Deeper notes:
 ## Pitch
 
 Rust for web **without** a VPS: build a static CGI binary, upload to shared hosting (`cgi-bin/`), maybe pair with a frontend such as Marko. If you can run your own long-lived server anyway, Marty is optional — use Axum/Tokio (or anything else) directly.
+
+## Why ship on Marty
+
+Marty is a **primary** path for request/response HTTP: one static Rust binary on shared hosting. It is not a consolation prize for people who “cannot do cloud.”
+
+**Performance (Oct 2026, same client, same algorithms):** on Hetzner Webhosting S, warm P50 for the complex CPU routes sits with **Cloudflare Workers** at the top of the compare (~26–34 ms). all-inkl lands near AWS. Azure’s warm band is fine; its cold/P95 spike is the cloud tax Marty does not pay. Tables: [`alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md). On the host, Marty beats PHP on heavy CPU; sync ≈ Axum latency, smaller binary ([Findings](#findings-oct-2026-all-inkl--hetzner-s--netcup-eiwomisau--local-hosting-mirror)).
+
+What you choose is **ops and economics**, not a slower runtime. Host status: [`HOSTERS.md`](HOSTERS.md). Money: [`COST.md`](COST.md). Trust boundaries: [`SECURITY.md`](SECURITY.md).
+
+Any row below is enough. They often overlap.
+
+| You want… | Marty ships… | Bounds (not demotions) |
+|-----------|--------------|-------------------------|
+| **Rust on the public web** | Library or service → musl ELF → `cgi-bin/` → `chmod 755`. Sync `Router` by default; Axum via `serve_cgi` if you already have handlers. | Long-lived Axum on a VPS/Uberspace you already run still wins on persistent connections. For ordinary request/response, CGI is the product. |
+| **Cloud-class latency, hosting bill** | Verified floor **Hetzner S at 1.90 €/month**: process + SQLite/MySQL + domain, flat. Warm latency in the Workers band from the laptop compare above. | Global anycast and auto scale-out stay with the clouds. One idle stateless function can be free on a cloud tier — until you add a database. |
+| **Independence from hyperscalers** | No Lambda/Azure/Workers/Scaleway entry point, CLI, or vendor URL. Artifact = ELF + `.htaccess`. Exit = FTP the same binary. German hosts keep the process in Germany. | The hoster is still an operator. Jurisdiction ≠ app security. Pick a plan that actually runs customer CGI (probe; Infomaniak does not). |
+| **A host you already trust** | Turn existing webspace into a Rust backend next to the site that already pays for domain/FTP/MySQL. Same public origin, measured Rust speed. | Probe first. “CGI” ≠ “arbitrary ELF”. Same-account vhosts share a uid. |
+| **A fast API next to a static frontend** | Marko/Astro/HTML for UI; Marty for forms, signup, JSON, signed downloads — at hosting latency that matches the Workers tier on the right plan. | CORS/auth are yours. Fair-use filters exist; do not grill production accounts. |
+| **CPU work without a ms meter** | Parsers, hashing, primes-class work, small image/PDF. Process gone when done; wall time is not a line item. Marty leads PHP on the same host for heavy routes. | Host CPU quotas still apply. Light GETs are mostly TLS/RTT everywhere. |
+| **PHP for content, Rust for the hot path** | Keep the CMS/shop; put the memory-safe or math-heavy endpoint in `cgi-bin/`. One domain, optional shared MySQL, Rust where it counts. | Two deployables. Shared uid: treat the account as one trust domain ([`SECURITY.md`](SECURITY.md)). |
+| **A deliverable the customer can own** | Agency/Verein/client gets a binary on hosting they already understand — cloud-tier warm latency, no AWS org transfer, no surprise function bill. | Probe their plan. Ops model is panel + FTP/SFTP. |
+| **A real app without a cloud résumé** | Leaderboard, RSVP, license check, webhook sink, small SaaS-shaped tool. SQLite/MySQL included; signed cookie sessions across process-per-request. Idle cost is the flat plan. | No WebSockets / cross-request in-memory queues. Signature checks and idempotency are app code. |
+| **A fair baseline before (or instead of) cloud** | Same workloads run as twins under [`alternatives/`](../alternatives/). Hosting often **ties or beats** warm cloud P50; you move to a vendor when you need *their* scale or edge map — not because CGI was slow. | Entry points differ. Growing into Lambda is a port. Growing into Axum on a VPS reuses the handlers you already have. |
+| **Teaching request → process → response** | One ELF, FTP, browser. Students measure real outside latency without IAM theatre — and see that “old” CGI on a modern host is not nostalgia. | Use Docker mirrors when the room has no host. Probe before claiming a tariff. |
 
 ## Defaults
 
