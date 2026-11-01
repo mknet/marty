@@ -11,7 +11,7 @@ alias = "mysql"
 path_info = false
 
 [dependencies]
-marty = { path = "../../marty", default-features = false, features = ["sync-cgi"] }
+marty = { path = "../../marty", default-features = false, features = ["sync-cgi", "config"] }
 marty-demo-logic = { path = "../demo_logic" }
 # No OpenSSL/aws-lc — fine for typical all-inkl localhost MySQL (no TLS).
 # For TLS to a remote host, switch to features = ["default-rustls"].

@@ -1,8 +1,18 @@
 //! Signed cookie sessions for sync CGI (survives process-per-request).
 //!
 //! Enable Cargo feature **`session`**. Values are stringly; keep payloads small.
+//!
+//! Build the store with [`SessionStore::from_config`] so a missing secret fails loudly
+//! instead of falling back to a public default:
+//!
+//! ```rust,no_run
+//! let cfg = marty::Config::load()?;
+//! let store = marty::SessionStore::from_config(&cfg)?;
+//! # Ok::<(), marty::ConfigError>(())
+//! ```
 
 use crate::cgi::{CgiRequest, CgiResponse};
+use crate::config::{Config, ConfigError};
 use crate::cookie::{Cookie, SameSite};
 use crate::form::parse_urlencoded;
 use hmac::{Hmac, Mac};
@@ -11,6 +21,11 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Key (env var and config file) read by [`SessionStore::from_config`].
+pub const SECRET_KEY: &str = "MARTY_SESSION_SECRET";
+/// Minimum secret length (bytes) accepted by [`SessionStore::from_config`].
+pub const MIN_SECRET_LEN: usize = 32;
 
 /// HMAC-signed cookie session store.
 #[derive(Debug, Clone)]
@@ -30,6 +45,24 @@ impl SessionStore {
             max_age: Some(600),
             secure: false,
         }
+    }
+
+    /// Store keyed by `MARTY_SESSION_SECRET` (env var or config file).
+    ///
+    /// Errors if the secret is missing or shorter than [`MIN_SECRET_LEN`] bytes.
+    /// Generate one with e.g. `openssl rand -hex 32`.
+    pub fn from_config(cfg: &Config) -> Result<Self, ConfigError> {
+        let secret = cfg.require(SECRET_KEY)?;
+        if secret.len() < MIN_SECRET_LEN {
+            return Err(ConfigError::Invalid {
+                key: SECRET_KEY.into(),
+                reason: format!(
+                    "{} bytes, need at least {MIN_SECRET_LEN} (e.g. `openssl rand -hex 32`)",
+                    secret.len()
+                ),
+            });
+        }
+        Ok(Self::new(secret))
     }
 
     pub fn cookie_name(mut self, name: impl Into<String>) -> Self {
@@ -184,6 +217,20 @@ mod tests {
         let back = verify_and_decode(secret, &raw).unwrap();
         assert_eq!(back.get("count").map(String::as_str), Some("3"));
         assert!(verify_and_decode(secret, &(raw + "x")).is_none());
+    }
+
+    #[test]
+    fn from_config_requires_long_secret() {
+        let short = Config::parse("MARTY_SESSION_SECRET=too-short\n").unwrap();
+        let err = SessionStore::from_config(&short).unwrap_err().to_string();
+        assert!(err.contains("need at least 32"), "{err}");
+
+        let ok = Config::parse("MARTY_SESSION_SECRET=0123456789abcdef0123456789abcdef\n").unwrap();
+        assert!(SessionStore::from_config(&ok).is_ok());
+
+        let missing = Config::parse("").unwrap();
+        let err = SessionStore::from_config(&missing).unwrap_err().to_string();
+        assert!(err.contains(SECRET_KEY), "{err}");
     }
 
     #[test]

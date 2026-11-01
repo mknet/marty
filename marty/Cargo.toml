@@ -17,7 +17,9 @@ default = ["hyper-cgi"]
 # Includes query/form/cookie helpers. Add **`session`** for signed cookie sessions.
 sync-cgi = []
 # HMAC-signed cookie sessions (`SessionStore`) for process-per-request CGI.
-session = ["dep:hmac", "dep:sha2"]
+session = ["config", "dep:hmac", "dep:sha2"]
+# `marty::Config`: env-first settings with a `key = value` file fallback (suexec-safe secrets). No deps.
+config = []
 # Apache `.htaccess` mount generator (`marty::htaccess`) — no extra deps; for consumer `build.rs`.
 # Reads `[package.metadata.marty]` (alias) + package name (binary).
 htaccess = []

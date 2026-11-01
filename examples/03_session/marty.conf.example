@@ -1,0 +1,7 @@
+# Session secret for marty-03-session. Same key names as the env vars.
+# Never put this file under the docroot (not into cgi-bin/ either): copy it to deploy/<target>/marty.conf,
+# set `config` in marty.deploy.toml, and `cargo marty deploy` uploads it outside the docroot with mode 600.
+# Locally, export MARTY_SESSION_SECRET or point MARTY_CONFIG at a copy of this file.
+# Generate: openssl rand -hex 32   (at least 32 bytes; the binary refuses shorter secrets)
+
+MARTY_SESSION_SECRET=REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_32
