@@ -1,9 +1,0 @@
-# Copy to marty_mysql.conf next to the CGI cwd (often cgi-bin/) and fill in KAS values.
-# On all-inkl, .htaccess SetEnv does NOT reach the CGI (suexec) — use this file instead.
-# Keep marty_mysql.conf out of public download if your host serves arbitrary files from cgi-bin.
-
-host=localhost
-user=YOUR_DB_USER
-password=YOUR_DB_PASSWORD
-database=YOUR_DB_NAME
-#port=3306

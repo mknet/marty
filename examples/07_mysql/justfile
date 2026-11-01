@@ -1,5 +1,5 @@
 # From this directory: `just` = smoke; `just linux` / `just linux arm` = musl cross-build (see linux.just).
-# Smoke needs MySQL + MARTY_MYSQL_* or marty_mysql.conf (see README).
+# Smoke needs MySQL + MARTY_MYSQL_* env vars or ./marty.conf (passed via MARTY_CONFIG; see README).
 # Requires: bash, python3 (cargo metadata in `install`).
 
 default: smoke
@@ -33,10 +33,8 @@ install: build
     mkdir -p "$HERE/cgi-bin"
     cp -f "$BIN" "$HERE/cgi-bin/marty-07-mysql"
     chmod +x "$HERE/cgi-bin/marty-07-mysql"
-    # Conf for CGI cwd (= example dir when using _http-cgi-server).
-    if [[ -f "$HERE/marty_mysql.conf" ]]; then
-      cp -f "$HERE/marty_mysql.conf" "$HERE/cgi-bin/marty_mysql.conf" 2>/dev/null || true
-    fi
+    # Never copy the conf into cgi-bin/: the binary does not look there (see README).
+    rm -f "$HERE/cgi-bin/marty_mysql.conf" "$HERE/cgi-bin/marty.conf"
 
 run-server:
     #!/usr/bin/env bash
@@ -44,6 +42,7 @@ run-server:
     HERE="{{ justfile_directory() }}"
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$HERE"
+    if [[ -f "$HERE/marty.conf" && -z "${MARTY_CONFIG:-}" ]]; then export MARTY_CONFIG="$HERE/marty.conf"; fi
     exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
 
 smoke: setup install
@@ -55,13 +54,18 @@ smoke: setup install
       echo "error: hurl not on PATH after \`just setup\` (https://hurl.dev). Add Cargo bin to PATH, e.g. export PATH=\"\$HOME/.cargo/bin:\$PATH\"" >&2
       exit 1
     fi
-    # _http-cgi-server cwd is the example dir; conf / env must be visible there.
-    if [[ -f "$HERE/marty_mysql.conf" ]]; then
+    # The CGI inherits _http-cgi-server's env: pass ./marty.conf explicitly via MARTY_CONFIG.
+    if [[ -f "$HERE/marty.conf" && -z "${MARTY_CONFIG:-}" ]]; then
+      export MARTY_CONFIG="$HERE/marty.conf"
+    elif [[ -n "${MARTY_CONFIG:-}" ]]; then
       :
     elif [[ -n "${MARTY_MYSQL_USER:-}" && -n "${MARTY_MYSQL_DATABASE:-}" ]]; then
       :
     else
-      echo "error: configure MySQL — copy marty_mysql.conf.example → marty_mysql.conf or set MARTY_MYSQL_USER + MARTY_MYSQL_DATABASE" >&2
+      echo "error: configure MySQL — copy marty.conf.example → marty.conf or set MARTY_MYSQL_USER + MARTY_MYSQL_DATABASE" >&2
+      if [[ -f "$HERE/marty_mysql.conf" ]]; then
+        echo "hint: marty_mysql.conf is the old name; rename it to marty.conf and prefix keys with MARTY_MYSQL_ (see marty.conf.example)" >&2
+      fi
       exit 1
     fi
     bash "$ROOT/scripts/cgi-example-smoke.sh" "$HERE"

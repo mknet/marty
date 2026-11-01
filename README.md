@@ -88,7 +88,8 @@ async fn main() {
 |---------|------|
 | **`sync-cgi`** | Recommended: sync `Router`, request/response helpers (no Tokio) |
 | **`htaccess`** | Build-time Apache mount generator for `build.rs` |
-| **`session`** | HMAC-signed cookie sessions for process-per-request CGI |
+| **`session`** | HMAC-signed cookie sessions for process-per-request CGI (enables `config`) |
+| **`config`** | `marty::Config`: env vars first, then one config file outside the docroot (suexec drops `SetEnv`) |
 | **`hyper-cgi`** | Default: CGI ↔ `hyper` types |
 | **`tower`** | `serve_cgi` for Axum / Tower services |
 

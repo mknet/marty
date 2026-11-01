@@ -13,6 +13,7 @@
 //! Use [`CgiRequest`](crate::CgiRequest) / [`CgiResponse`](crate::CgiResponse) (no async runtime).
 //! Query/form (`query`, `form`) and cookies (`cookies`, `set_cookie`) need no extra features.
 //! Enable **`session`** for HMAC-signed cookie sessions that work across CGI process-per-request.
+//! Enable **`config`** (included in `session`) for [`Config`]: env-first secrets with a file fallback.
 //! Enable **`htaccess`** to generate Apache rewrite mounts (pretty URL → `cgi-bin` binary) from `build.rs`.
 //! Enable feature **`sync-cgi`** (without `hyper-cgi`) for a smaller sync-only build without hyper.
 //!
@@ -62,6 +63,10 @@ pub mod cookie;
 pub mod form;
 pub mod router;
 
+#[cfg(feature = "config")]
+#[cfg_attr(docsrs, doc(cfg(feature = "config")))]
+pub mod config;
+
 #[cfg(feature = "session")]
 #[cfg_attr(docsrs, doc(cfg(feature = "session")))]
 pub mod session;
@@ -79,6 +84,9 @@ pub use cgi::{CgiRequest, CgiResponse, IntoResponse, relative_path};
 pub use cookie::{Cookie, Cookies, SameSite};
 pub use form::{parse_urlencoded, percent_decode};
 pub use router::Router;
+
+#[cfg(feature = "config")]
+pub use config::{Config, ConfigError};
 
 #[cfg(feature = "session")]
 pub use session::{Session, SessionStore};

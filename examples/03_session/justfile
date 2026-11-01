@@ -1,6 +1,10 @@
 # From this directory: `just` = smoke; `just linux` / `just linux arm` = musl cross-build (see linux.just).
 # Smoke uses `scripts/cgi-example-smoke.sh` (workspace root). Hurl: `just setup` (workspace root).
 # Requires: bash, python3 (cargo metadata in `install`).
+# The binary needs a session secret (no built-in default). Local runs export a throwaway one
+# unless MARTY_SESSION_SECRET is already set; production uses marty.conf (see marty.conf.example).
+
+local_secret := "local-smoke-only-not-a-secret-0123456789abcdef"
 
 default: smoke
 
@@ -40,6 +44,7 @@ run-server:
     HERE="{{ justfile_directory() }}"
     ROOT="$(cd "$HERE/../.." && pwd)"
     cd "$HERE"
+    export MARTY_SESSION_SECRET="${MARTY_SESSION_SECRET:-{{ local_secret }}}"
     exec cargo run --manifest-path "$ROOT/Cargo.toml" -p _http-cgi-server
 
 smoke: setup install
@@ -51,4 +56,5 @@ smoke: setup install
       echo "error: hurl not on PATH after \`just setup\` (https://hurl.dev). Add Cargo bin to PATH, e.g. export PATH=\"\$HOME/.cargo/bin:\$PATH\"" >&2
       exit 1
     fi
+    export MARTY_SESSION_SECRET="${MARTY_SESSION_SECRET:-{{ local_secret }}}"
     bash "$ROOT/scripts/cgi-example-smoke.sh" "$HERE"
