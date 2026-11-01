@@ -1,6 +1,6 @@
 [package]
 name = "cargo-marty"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.86"
 description = "cargo marty: build a musl CGI bundle for shared hosting and deploy it over SFTP/FTPS (hosters differ in data, not code)."
