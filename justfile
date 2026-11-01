@@ -1,5 +1,5 @@
 # Marty workspace — shared CGI smoke (`scripts/cgi-example-smoke.sh`) and musl cross-build (`_linux_musl`).
-# From repo root: `just setup`, `just smoke-01-basic` … `just smoke-05-sqlite` / `smoke-07-mysql`, or `cd examples/… && just`
+# From repo root: `just setup`, `just check`, `just smoke-01-basic` … `just smoke-05-sqlite` / `smoke-07-mysql`, or `cd examples/… && just`
 # Requires: just, bash, python3 (example `install` recipes). Hurl: `just setup`.
 
 default:
@@ -7,6 +7,12 @@ default:
 
 setup:
     cargo install hurl --locked
+
+# Same checks as CI: tests, formatting, clippy (warnings are errors).
+check:
+    cargo test --workspace --all-features
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-features --all-targets -- -D warnings
 
 # Shared musl build + deploy bundle for `package` (workspace member). Used from `examples/*/linux.just`.
 # Single source: `tools/cargo-marty` (`cargo marty build`), run from the workspace without installing.
