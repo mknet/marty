@@ -7,3 +7,8 @@ publish = false
 description = "Read-only CGI probe: reports process, parent chain, fd types and system facts to mirror a hosting Apache locally."
 
 [dependencies]
+
+# Source lives in cargo-marty so `cargo marty probe` can embed it (crates.io ships only crate files).
+[[bin]]
+name = "marty-hosting-probe"
+path = "../../cargo-marty/probe/main.rs"

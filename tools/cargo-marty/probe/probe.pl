@@ -132,6 +132,7 @@ print "max processes (limits): " . ($limits =~ /^Max processes\s+(\S+)/m ? $1 : 
 section('environment');
 for my $key (sort keys %ENV) {
     my $value = $ENV{$key};
+    $value = "(PEM, " . length($value) . " bytes, not shown)" if $value =~ /^-----BEGIN/;
     $value =~ s/[\r\n]/ /g;
     print "$key=$value\n";
 }

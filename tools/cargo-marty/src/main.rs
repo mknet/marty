@@ -5,6 +5,7 @@
 
 mod build;
 mod deploy;
+mod probe;
 mod target;
 mod transport;
 
@@ -20,6 +21,7 @@ USAGE:
     cargo marty build  [<target>] [-p <package>] [--arm | --target <triple>]
     cargo marty deploy <target> [-p <package>] [--arm] [--dry-run]
     cargo marty check  <target> [<path>]
+    cargo marty probe  <target> [--arm] [--keep] [--no-perl] [--dry-run]
     cargo marty init   <target> [--preset <name>] [--host <h>] [--user <u>] [--domain <d>]
                                 [--protocol sftp|ftps|ftp] [--docroot <dir>] [--config <file>]
     cargo marty presets
@@ -29,6 +31,8 @@ build   cargo zigbuild for Linux musl, ELF check, bundle target/deploy/<pkg>/{cg
 deploy  build <target>, upload binary (chmod 755) + deploy/<target>/<file> → config (chmod 600,
         outside the docroot), merge the marty block into .htaccess
 check   one GET on https://<domain>/<alias>/<path>: status, latency, Server header
+probe   upload the hosting probe (+ probe.pl) to cgi_dir under a random name, GET it, measure
+        headers/keep-alive/HTTP2/timing from outside, remove it, save deploy/<target>/probe-*.txt
 init    append [target.<name>] to marty.deploy.toml, create deploy/<name>/marty.conf (600),
         add both to .gitignore
 
@@ -44,6 +48,8 @@ pub struct Args {
     pub triple: Option<String>,
     pub arm: bool,
     pub dry_run: bool,
+    pub keep: bool,
+    pub no_perl: bool,
     pub preset: Option<String>,
     pub host: Option<String>,
     pub user: Option<String>,
@@ -80,6 +86,8 @@ fn parse_args(raw: Vec<String>) -> Result<Args> {
             "--config" => args.config = Some(value(&flag)?),
             "--arm" => args.arm = true,
             "--dry-run" => args.dry_run = true,
+            "--keep" => args.keep = true,
+            "--no-perl" => args.no_perl = true,
             "-h" | "--help" => args.help = true,
             f if f.starts_with('-') => return Err(format!("unknown flag {f}\n\n{USAGE}").into()),
             _ => args.positional.push(arg),
@@ -127,6 +135,7 @@ fn run(raw: Vec<String>) -> Result<()> {
         }
         "deploy" => deploy::deploy(&args),
         "check" => deploy::check(&args),
+        "probe" => probe::probe(&args),
         "init" => deploy::init(&args),
         "presets" => {
             target::print_presets();

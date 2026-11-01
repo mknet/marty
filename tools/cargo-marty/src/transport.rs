@@ -30,6 +30,8 @@ pub enum Op {
         mode: u32,
         swap: bool,
     },
+    /// Delete a remote file; failing to do so is an error.
+    Remove(String),
 }
 
 impl fmt::Display for Op {
@@ -37,6 +39,7 @@ impl fmt::Display for Op {
         match self {
             Op::Mkdir(d) => write!(f, "mkdir -p {d}"),
             Op::Chmod { remote, mode } => write!(f, "chmod {mode:o} {remote}"),
+            Op::Remove(remote) => write!(f, "rm {remote}"),
             Op::Upload {
                 local,
                 remote,
@@ -136,8 +139,10 @@ impl Remote {
                     }
                 }
                 for op in ops {
-                    if let Op::Chmod { remote, mode } = op {
-                        self.ftp_chmod(remote, *mode)?;
+                    match op {
+                        Op::Chmod { remote, mode } => self.ftp_chmod(remote, *mode)?,
+                        Op::Remove(remote) => self.ftp_remove(remote)?,
+                        _ => {}
                     }
                 }
                 Ok(())
@@ -230,6 +235,18 @@ impl Remote {
         Ok(())
     }
 
+    fn ftp_remove(&self, remote: &str) -> Result<()> {
+        let mut cmd = self.curl_base();
+        cmd.args(["--list-only", "-o", "/dev/null", "-Q"])
+            .arg(format!("DELE {remote}"))
+            .arg(self.ftp_url(""));
+        let (status, stderr) = self.run_curl(cmd)?;
+        if !status.success() {
+            return Err(format!("curl delete of {remote} failed ({status}): {stderr}").into());
+        }
+        Ok(())
+    }
+
     fn ftp_upload(&self, local: &Path, remote: &str, mode: u32, swap: bool) -> Result<()> {
         let name = remote.rsplit('/').next().unwrap_or(remote);
         let mut cmd = self.curl_base();
@@ -289,6 +306,10 @@ pub fn sftp_batch(ops: &[Op]) -> String {
             }
             Op::Chmod { remote, mode } => {
                 out.push_str(&format!("-chmod {mode:o} {}\n", quote(remote)));
+            }
+            Op::Remove(remote) => {
+                // Not `-rm`: a file left behind must surface as an error.
+                out.push_str(&format!("rm {}\n", quote(remote)));
             }
             Op::Upload {
                 local,
@@ -422,6 +443,19 @@ put \"/tmp/marty.conf\" \"httpdocs/cgi-bin/marty.conf\"
 chmod 600 \"httpdocs/cgi-bin/marty.conf\"
 "
         );
+    }
+
+    #[test]
+    fn batch_for_remove() {
+        let ops = [
+            Op::Remove("httpdocs/cgi-bin/marty-probe-ab".into()),
+            Op::Remove("httpdocs/cgi-bin/marty-probe-ab.pl".into()),
+        ];
+        assert_eq!(
+            sftp_batch(&ops),
+            "rm \"httpdocs/cgi-bin/marty-probe-ab\"\nrm \"httpdocs/cgi-bin/marty-probe-ab.pl\"\n"
+        );
+        assert_eq!(ops[0].to_string(), "rm httpdocs/cgi-bin/marty-probe-ab");
     }
 
     #[test]
