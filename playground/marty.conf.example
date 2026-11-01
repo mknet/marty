@@ -1,0 +1,3 @@
+# Secrets for the playground. Keys are env var names (marty::Config).
+# Generate: openssl rand -hex 32   (at least 32 bytes)
+MARTY_SESSION_SECRET=REPLACE_WITH_OUTPUT_OF_openssl_rand_hex_32
