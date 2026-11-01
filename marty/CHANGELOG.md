@@ -6,7 +6,7 @@ versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking
 
 ## [Unreleased]
 
-### Added
+### Added (cargo-marty 0.1.1 — 2026-11-01)
 
 - `cargo-marty`: `cargo marty probe <target>` builds the hosting probe (embedded,
   works outside this repo), uploads it with `probe.pl` into `cgi_dir` under a
