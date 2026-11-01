@@ -30,3 +30,5 @@ jobs:
         run: cargo test --workspace --all-features --verbose
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
