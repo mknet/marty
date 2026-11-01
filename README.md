@@ -1,6 +1,6 @@
 # Marty
 
-Rust **CGI** for shared hosting: one static binary, upload to `cgi-bin/`, no VPS.
+Rust **CGI** for shared hosting: one static binary, upload to `cgi-bin/`, no VPS. Primary path for request/response HTTP — on Hetzner S, warm latency sits with Cloudflare Workers in the Oct 2026 outside compare. Detail: [`docs/DIRECTION.md`](docs/DIRECTION.md#why-ship-on-marty).
 
 CGI runs **one process per request**—simple isolation, gone when the work is done. Prefer **`sync-cgi`** + `marty::Router` (smallest binary). Axum/`tower` is optional if you already have handlers.
 
@@ -108,8 +108,9 @@ async fn main() {
 | Topic | Where |
 |-------|--------|
 | Worked examples (routing, cookies, sessions, SQLite, MySQL, Axum) | [`examples/`](examples/) |
+| State, sessions, and databases with one process per request (FAQ) | [`docs/STATE.md`](docs/STATE.md) |
 | Deploy tool (`cargo marty`) | [`tools/cargo-marty/`](tools/cargo-marty/) |
-| Product direction, hosters, cost, CGI variants | [`docs/`](docs/) |
+| Product direction, hosters, cost, CGI variants, security | [`docs/`](docs/) |
 | Outside benches (shared hosts + cloud twins) | [`benchmarks/`](benchmarks/), [`alternatives/`](alternatives/) |
 | Host fingerprint probe | [`tools/hosting-probe/`](tools/hosting-probe/) |
 
