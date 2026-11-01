@@ -9,7 +9,7 @@ readme = "README.md"
 license = "Apache-2.0"
 keywords = ["cgi", "deploy", "cargo-subcommand", "shared-hosting", "musl"]
 categories = ["development-tools::cargo-plugins", "web-programming"]
-include = ["src/**", "presets/**", "Cargo.toml", "README.md", "LICENSE-APACHE"]
+include = ["src/**", "presets/**", "probe/**", "Cargo.toml", "README.md", "LICENSE-APACHE"]
 
 [dependencies]
 cargo_metadata = "0.23"

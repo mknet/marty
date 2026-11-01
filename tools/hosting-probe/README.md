@@ -23,12 +23,25 @@ print `n/a` instead of failing.
 
 ## Files
 
-- `probe.pl` — Perl CGI, core modules only. Zero build risk; try this first.
-- `probe-rs/` — `marty-hosting-probe`, std-only Rust binary (static musl).
+- [`../cargo-marty/probe/probe.pl`](../cargo-marty/probe/probe.pl) — Perl CGI, core modules only. Zero build risk; try this first.
+- [`../cargo-marty/probe/main.rs`](../cargo-marty/probe/main.rs) — `marty-hosting-probe`, std-only Rust binary (static musl).
   Running it also proves that foreign static binaries execute in that `cgi-bin`.
+  `probe-rs/` is the workspace crate that builds it; the sources live in cargo-marty so `cargo marty probe` can embed them.
 - `probe-outside.sh` — `curl`-based outside view (≈8 sequential requests).
 
-## Usage
+## Easiest: `cargo marty probe <target>`
+
+With a target in `marty.deploy.toml` (see [cargo-marty](../cargo-marty/README.md#probe)):
+
+```bash
+cargo marty probe prod             # --arm, --no-perl, --keep, --dry-run
+```
+
+It builds the probe, uploads it with `probe.pl` under a random name into `cgi_dir`, fetches both,
+runs the outside checks of `probe-outside.sh`, removes the files again and saves the report to
+`deploy/prod/probe-<timestamp>.txt`.
+
+## Manual usage
 
 ```bash
 cd tools/hosting-probe

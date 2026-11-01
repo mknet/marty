@@ -13,6 +13,14 @@ use std::mem::ManuallyDrop;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::FileTypeExt;
 
+// libc, which std links anyway; works when `/proc` is hidden (hidepid).
+unsafe extern "C" {
+    safe fn getuid() -> u32;
+    safe fn geteuid() -> u32;
+    safe fn getgid() -> u32;
+    safe fn getegid() -> u32;
+}
+
 fn main() {
     let mut out = String::with_capacity(8 * 1024);
     out.push_str("Content-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n\r\n");
@@ -24,16 +32,15 @@ fn main() {
     section(&mut out, "process");
     let pid = std::process::id();
     let _ = writeln!(out, "pid: {pid}");
+    let ppid = std::os::unix::process::parent_id();
+    let _ = writeln!(out, "ppid: {ppid}");
     let _ = writeln!(
         out,
-        "ppid: {}",
-        proc_ppid(pid).map_or("n/a".into(), |p| p.to_string())
-    );
-    let _ = writeln!(
-        out,
-        "uid/gid (status): {} / {}",
-        proc_field(pid, "Uid").unwrap_or_else(na),
-        proc_field(pid, "Gid").unwrap_or_else(na)
+        "uid: {} euid: {} gid: {} egid: {}",
+        getuid(),
+        geteuid(),
+        getgid(),
+        getegid()
     );
     let _ = writeln!(
         out,
@@ -59,7 +66,7 @@ fn main() {
     );
 
     section(&mut out, "parent chain (up to 6 levels)");
-    let mut cur = proc_ppid(pid);
+    let mut cur = Some(ppid);
     for level in 1..=6 {
         let Some(p) = cur else { break };
         if p == 0 {
@@ -116,7 +123,11 @@ fn main() {
     let mut env: Vec<(String, String)> = std::env::vars().collect();
     env.sort();
     for (k, v) in env {
-        let v = v.replace(['\r', '\n'], " ");
+        let v = if v.starts_with("-----BEGIN") {
+            format!("(PEM, {} bytes, not shown)", v.len())
+        } else {
+            v.replace(['\r', '\n'], " ")
+        };
         let _ = writeln!(out, "{k}={v}");
     }
 

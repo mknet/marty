@@ -4,6 +4,16 @@ All notable changes to the **marty** library crate are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking API changes).
 
+## [Unreleased]
+
+### Added
+
+- `cargo-marty`: `cargo marty probe <target>` builds the hosting probe (embedded,
+  works outside this repo), uploads it with `probe.pl` into `cgi_dir` under a
+  random name, records the inside view (CGI env, pipe vs socket, parent chain,
+  system) and the outside view (headers, keep-alive, HTTP/2, timing), removes
+  both files and saves the report to `deploy/<target>/probe-<timestamp>.txt` (600).
+
 ## [0.2.1] — 2026-11-01
 
 ### Added

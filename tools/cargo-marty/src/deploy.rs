@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-fn target_name(args: &Args, cmd: &str) -> Result<String> {
+pub(crate) fn target_name(args: &Args, cmd: &str) -> Result<String> {
     match args.positional.as_slice() {
         [name] => Ok(name.clone()),
         [name, _path] if cmd == "check" => Ok(name.clone()),
@@ -30,18 +30,29 @@ struct Context {
     package: String,
 }
 
+/// Target `name` from `marty.deploy.toml` in the cwd, else in `workspace_root`.
+/// Also returns the path of that file (local `deploy/` sits next to it).
+pub(crate) fn load_target(name: &str, workspace_root: Option<&Path>) -> Result<(Target, PathBuf)> {
+    let cwd = env::current_dir()?;
+    let root = workspace_root.unwrap_or(&cwd);
+    let file = target::find_deploy_file(&cwd, root).ok_or_else(|| {
+        let places = if root == cwd {
+            cwd.display().to_string()
+        } else {
+            format!("{} or {}", cwd.display(), root.display())
+        };
+        format!(
+            "no {DEPLOY_FILE} in {places}; create one with `cargo marty init {name} --preset <preset>`"
+        )
+    })?;
+    let target = target::load(&file, name)?;
+    Ok((target, file))
+}
+
 fn context(args: &Args, cmd: &str) -> Result<Context> {
     let name = target_name(args, cmd)?;
     let meta = build::metadata()?;
-    let cwd = env::current_dir()?;
-    let file = target::find_deploy_file(&cwd, meta.workspace_root.as_std_path()).ok_or_else(|| {
-        format!(
-            "no {DEPLOY_FILE} in {} or {}; create one with `cargo marty init {name} --preset <preset>`",
-            cwd.display(),
-            meta.workspace_root
-        )
-    })?;
-    let target = target::load(&file, &name)?;
+    let (target, _) = load_target(&name, Some(meta.workspace_root.as_std_path()))?;
     let package = args.package.clone().or_else(|| target.package.clone());
     let pkg = build::select_package(&meta, package.as_deref())?;
     let info = build::package_info(pkg)?;
@@ -52,14 +63,34 @@ fn context(args: &Args, cmd: &str) -> Result<Context> {
     })
 }
 
-/// Remote dir of the `.htaccess` must see `cgi_dir` at the path the generated rewrite uses.
-fn warn_on_mount_mismatch(t: &Target, info: &PackageInfo) {
-    let rel = if t.docroot == "." {
+/// URL path of `cgi_dir` below the docroot (`httpdocs/cgi-bin` → `cgi-bin`); `None` when
+/// `cgi_dir` lies outside the docroot.
+pub(crate) fn cgi_mount(t: &Target) -> Option<&str> {
+    if t.docroot == "." {
         Some(t.cgi_dir.as_str())
+    } else if t.cgi_dir == t.docroot {
+        Some("")
     } else {
         t.cgi_dir.strip_prefix(&format!("{}/", t.docroot))
-    };
-    if rel != Some(info.mount_cgi_dir.trim_matches('/')) {
+    }
+}
+
+/// `user@host (protocol)` for messages.
+pub(crate) fn destination(t: &Target) -> Result<String> {
+    Ok(format!(
+        "{}{} ({})",
+        t.user
+            .as_deref()
+            .map(|u| format!("{u}@"))
+            .unwrap_or_default(),
+        t.host()?,
+        t.protocol
+    ))
+}
+
+/// Remote dir of the `.htaccess` must see `cgi_dir` at the path the generated rewrite uses.
+fn warn_on_mount_mismatch(t: &Target, info: &PackageInfo) {
+    if cgi_mount(t) != Some(info.mount_cgi_dir.trim_matches('/')) {
         eprintln!(
             "warning: cgi_dir {} is not {}/{} — the generated RewriteRule points at {}/{}; \
              set cgi_dir in [package.metadata.marty] or adjust the target",
@@ -99,15 +130,7 @@ pub fn deploy(args: &Args) -> Result<()> {
     }
     let remote_bin = join(&t.cgi_dir, &info.binary_name);
     let remote_hta = join(&t.docroot, ".htaccess");
-    let dest = format!(
-        "{}{} ({})",
-        t.user
-            .as_deref()
-            .map(|u| format!("{u}@"))
-            .unwrap_or_default(),
-        t.host()?,
-        t.protocol
-    );
+    let dest = destination(&t)?;
 
     if args.dry_run {
         println!("dry run: target `{}` → {dest}", t.name);
@@ -321,7 +344,7 @@ fn check_url(t: &Target, info: &PackageInfo, path: Option<&str>) -> Result<Strin
     })
 }
 
-fn parse_curl_check(text: &str) -> Option<(u16, f64, f64)> {
+pub(crate) fn parse_curl_check(text: &str) -> Option<(u16, f64, f64)> {
     let line = text
         .lines()
         .rev()
