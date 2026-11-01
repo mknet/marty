@@ -21,6 +21,10 @@
 //!
 //! Reads **`CARGO_PKG_NAME`** (binary) and **`[package.metadata.marty]`** (alias), writes
 //! `{package}.htaccess` beside the linked binary.
+//!
+//! [`render`] wraps its output in `# BEGIN marty <binary>` / `# END marty <binary>` lines.
+//! [`merge_block`] uses them to replace that block inside an existing `.htaccess`
+//! (CMS / PHP rules elsewhere in the file stay as they are).
 
 use std::env;
 use std::fmt::Write as _;
@@ -106,9 +110,27 @@ pub fn render_rules(mounts: &[Mount<'_>]) -> String {
     out
 }
 
-/// Full `.htaccess` body: comments + `<IfModule mod_rewrite.c>` wrapping [`render_rules`].
+const BEGIN_PREFIX: &str = "# BEGIN marty ";
+const END_PREFIX: &str = "# END marty ";
+
+/// Marker name for a set of mounts: the binary name, or binaries joined with `+`.
+pub fn block_name(mounts: &[Mount<'_>]) -> String {
+    if mounts.is_empty() {
+        return "mounts".into();
+    }
+    mounts
+        .iter()
+        .map(|m| m.binary)
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Full `.htaccess` body: comments + `<IfModule mod_rewrite.c>` wrapping [`render_rules`],
+/// between `# BEGIN marty …` / `# END marty …` markers (see [`merge_block`]).
 pub fn render(mounts: &[Mount<'_>]) -> String {
+    let name = block_name(mounts);
     let mut out = String::new();
+    let _ = writeln!(out, "{BEGIN_PREFIX}{name}");
     match mounts {
         [] => {
             out.push_str("# Apache: (no Marty CGI mounts)\n");
@@ -169,6 +191,51 @@ pub fn render(mounts: &[Mount<'_>]) -> String {
             bin = m.binary
         );
     }
+    let _ = writeln!(out, "{END_PREFIX}{name}");
+    out
+}
+
+/// Merge a marked block (output of [`render`]) into an existing `.htaccess`.
+///
+/// If `existing` already has a `# BEGIN marty <name>` … `# END marty <name>` block with the
+/// same name, that block is replaced in place. Otherwise the block is **prepended**:
+/// mod_rewrite applies rules in order, and a CMS catch-all (`RewriteRule . /index.php [L]`)
+/// further up would otherwise swallow the mount. A block without markers is prepended as is.
+/// Lines outside the block are kept byte for byte.
+pub fn merge_block(existing: &str, block: &str) -> String {
+    let mut block = block.to_string();
+    if !block.ends_with('\n') {
+        block.push('\n');
+    }
+    let name = block
+        .lines()
+        .find_map(|l| l.trim_end().strip_prefix(BEGIN_PREFIX))
+        .map(str::to_string);
+
+    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+    if let Some(name) = name {
+        let begin = format!("{BEGIN_PREFIX}{name}");
+        let end = format!("{END_PREFIX}{name}");
+        // First END, then the last BEGIN before it: a dangling BEGIN from a broken edit
+        // further up must not pull user lines into the replaced range.
+        let end_idx = lines.iter().position(|l| l.trim_end() == end);
+        let begin_idx =
+            end_idx.and_then(|e| lines[..e].iter().rposition(|l| l.trim_end() == begin));
+        if let (Some(b), Some(e)) = (begin_idx, end_idx) {
+            let mut out = String::with_capacity(existing.len() + block.len());
+            out.extend(lines[..b].iter().copied());
+            out.push_str(&block);
+            out.extend(lines[e + 1..].iter().copied());
+            return out;
+        }
+    }
+
+    if existing.trim().is_empty() {
+        return block;
+    }
+    let mut out = block;
+    out.push('\n');
+    out.push_str(existing);
     out
 }
 
@@ -368,6 +435,68 @@ RewriteRule ^routing/?$ cgi-bin/marty-02-routing [L,PT]
         assert!(text.contains("RewriteRule ^basic/?$ cgi-bin/marty-01-basic [L,PT]"));
         assert!(text.contains("RewriteRule ^routing/(.+)$ cgi-bin/marty-02-routing/$1 [L,PT]"));
         assert!(text.contains("RewriteRule ^routing/?$ cgi-bin/marty-02-routing [L,PT]"));
+    }
+
+    #[test]
+    fn render_has_markers() {
+        let text = render(&[Mount::new("basic", "marty-01-basic")]);
+        assert!(text.starts_with("# BEGIN marty marty-01-basic\n"), "{text}");
+        assert!(text.ends_with("# END marty marty-01-basic\n"), "{text}");
+        let multi = render(&[Mount::new("a", "bin-a"), Mount::new("b", "bin-b")]);
+        assert!(multi.starts_with("# BEGIN marty bin-a+bin-b\n"));
+    }
+
+    #[test]
+    fn merge_into_empty_file() {
+        let block = render(&[Mount::new("basic", "marty-01-basic")]);
+        assert_eq!(merge_block("", &block), block);
+    }
+
+    #[test]
+    fn merge_prepends_before_cms_rules() {
+        let cms =
+            "# BEGIN WordPress\nRewriteEngine On\nRewriteRule . /index.php [L]\n# END WordPress\n";
+        let block = render(&[Mount::new("basic", "marty-01-basic")]);
+        let merged = merge_block(cms, &block);
+        assert!(merged.starts_with("# BEGIN marty marty-01-basic\n"));
+        assert!(merged.ends_with(cms));
+        let marty_at = merged.find("cgi-bin/marty-01-basic").unwrap();
+        assert!(marty_at < merged.find("index.php").unwrap());
+    }
+
+    #[test]
+    fn merge_replaces_existing_block_in_place() {
+        let old = render(&[Mount::new("old", "marty-01-basic")]);
+        let existing = format!("Options -Indexes\n\n{old}\n# tail\nRewriteRule . /index.php [L]\n");
+        let new = render(&[Mount::new("basic", "marty-01-basic")]);
+        let merged = merge_block(&existing, &new);
+        assert_eq!(
+            merged,
+            format!("Options -Indexes\n\n{new}\n# tail\nRewriteRule . /index.php [L]\n")
+        );
+        // Idempotent.
+        assert_eq!(merge_block(&merged, &new), merged);
+    }
+
+    #[test]
+    fn merge_keeps_other_marty_blocks() {
+        let a = render(&[Mount::new("a", "bin-a")]);
+        let b = render(&[Mount::new("b", "bin-b")]);
+        let existing = format!("{a}\n{b}");
+        let b2 = render(&[Mount::new("b2", "bin-b")]);
+        let merged = merge_block(&existing, &b2);
+        assert_eq!(merged, format!("{a}\n{b2}"));
+    }
+
+    #[test]
+    fn merge_handles_crlf_and_dangling_begin() {
+        let existing = "# BEGIN marty bin\r\nuser line\r\n# BEGIN marty bin\r\nold\r\n# END marty bin\r\nrest\r\n";
+        let block = "# BEGIN marty bin\nnew\n# END marty bin\n";
+        let merged = merge_block(existing, block);
+        assert_eq!(
+            merged,
+            "# BEGIN marty bin\r\nuser line\r\n# BEGIN marty bin\nnew\n# END marty bin\nrest\r\n"
+        );
     }
 
     #[test]

@@ -1,3 +1,4 @@
+# BEGIN marty marty-01-basic+marty-02-routing+marty-03-session+marty-04-cookies+marty-05-sqlite+marty-07-mysql
 # Apache: Marty CGI mounts on one vhost (same DocumentRoot, binaries under cgi-bin/).
 # Merge into your .htaccess or use as a starting point.
 # Requires: mod_rewrite, AllowOverride FileInfo (or All), Options +FollowSymLinks as needed.
@@ -18,3 +19,4 @@ RewriteRule ^cookies/?$ cgi-bin/marty-04-cookies [L,PT]
 RewriteRule ^sqlite/?$ cgi-bin/marty-05-sqlite [L,PT]
 RewriteRule ^mysql/?$ cgi-bin/marty-07-mysql [L,PT]
 </IfModule>
+# END marty marty-01-basic+marty-02-routing+marty-03-session+marty-04-cookies+marty-05-sqlite+marty-07-mysql
