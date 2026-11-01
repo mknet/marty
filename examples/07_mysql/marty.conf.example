@@ -1,6 +1,6 @@
 # MySQL settings for marty-07-mysql. Same key names as the env vars (env wins).
-# Never put this file under the docroot (not into cgi-bin/ either): set `config` / `config_source`
-# in marty.deploy.toml and `cargo marty deploy` uploads it outside the docroot with mode 600.
+# Never put this file under the docroot (not into cgi-bin/ either): copy it to deploy/<target>/marty.conf,
+# set `config` in marty.deploy.toml, and `cargo marty deploy` uploads it outside the docroot with mode 600.
 # On all-inkl, .htaccess SetEnv does NOT reach the CGI (suexec), so this file is the only path.
 # Locally: copy to marty.conf here; `just smoke` passes it via MARTY_CONFIG.
 

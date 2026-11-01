@@ -40,3 +40,8 @@ benchmarks/complex/.spawn-bin/
 tools/hosting-probe/dist/
 benchmarks/complex/dist/
 alternatives/**/target/
+# Secrets and deploy targets: never commit (templates are *.example).
+marty.conf
+marty.deploy.toml
+# cargo marty convention: deploy/<target>/marty.conf (any example dir)
+deploy/

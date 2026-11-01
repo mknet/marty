@@ -1,0 +1,5 @@
+# netcup Webhosting (verified on EiWoMiSau, Oct 2026: nginx front + Apache mod_cgi, site user).
+protocol = "sftp"
+docroot = "httpdocs"
+cgi_dir = "{docroot}/cgi-bin"
+notes = "Enable CGI-Unterstützung in the WCP first. Paths are relative to the SFTP login dir; additional domains usually live under <domain>/httpdocs, so set docroot accordingly (cgi_dir follows via {docroot}). Secrets: config = \"private/marty.conf\" (next to httpdocs, never inside it)."

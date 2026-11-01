@@ -61,11 +61,19 @@ cargo zigbuild --release --target x86_64-unknown-linux-musl
 
 Upload the binary to `cgi-bin/` (`chmod 755`). Put the `.htaccess` rules in the site root (or merge the `RewriteRule` lines). Pretty URLs are a **mount** (alias → binary), not one rewrite per `router.get(…)`.
 
-## Deploy tooling (today + planned)
+## Deploy tooling
 
-**Today:** feature **`htaccess`** generates the Apache mount file from `[package.metadata.marty]` at build time (see above).
+Feature **`htaccess`** generates the Apache mount file from `[package.metadata.marty]` at build time (see above). [`cargo-marty`](tools/cargo-marty/) does the last mile: musl build, bundle, upload, `.htaccess` merge.
 
-**Planned:** more tooling to simplify the shared-hosting last mile—packaging the musl binary, placing/merging `.htaccess`, and uploading over SFTP/FTP—without tying Marty to a specific hoster. Layout stays generic (`docroot` / `cgi-bin` paths), not “vendor SDKs”.
+```bash
+cargo install cargo-marty
+cargo marty init prod --preset netcup --host ssh.example.org --user hosting123 --domain example.org
+cargo marty deploy prod --dry-run   # show remote operations
+cargo marty deploy prod             # build, upload over SFTP (or FTPS), chmod 755, merge .htaccess
+cargo marty check prod              # GET https://example.org/hello/ (alias from Cargo.toml) → status, latency, Server
+```
+
+Targets (`prod`, `stage`, …) live in `marty.deploy.toml` (no passwords; keep it out of git). Hosters differ only in data: `docroot`, `cgi_dir`, protocol, optionally from a preset. Transport is the system `sftp` / `curl`, so your ssh config and agent apply. Secrets go into one config file **outside the docroot** (`config = "private/marty.conf"`); `cargo marty` uploads it with mode `600` and compiles its path into the binary, which reads it with `marty::Config`.
 
 ## Optional: Axum
 
@@ -100,6 +108,7 @@ async fn main() {
 | Topic | Where |
 |-------|--------|
 | Worked examples (routing, cookies, sessions, SQLite, MySQL, Axum) | [`examples/`](examples/) |
+| Deploy tool (`cargo marty`) | [`tools/cargo-marty/`](tools/cargo-marty/) |
 | Product direction, hosters, cost, CGI variants | [`docs/`](docs/) |
 | Outside benches (shared hosts + cloud twins) | [`benchmarks/`](benchmarks/), [`alternatives/`](alternatives/) |
 | Host fingerprint probe | [`tools/hosting-probe/`](tools/hosting-probe/) |

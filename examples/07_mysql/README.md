@@ -10,35 +10,53 @@ Deploy basics (`.htaccess`, musl): [`../02_routing/README.md`](../02_routing/REA
 
 ## Credentials (all-inkl)
 
-Apache **suexec** on all-inkl does **not** pass `.htaccess` `SetEnv` into the CGI. Put settings in **`marty_mysql.conf`** in the process cwd (typically next to the binary under `cgi-bin/`), or export env vars when you control the environment (local smoke):
+Apache **suexec** on all-inkl does **not** pass `.htaccess` `SetEnv` into the CGI, so production settings come from one config file **outside the docroot**. The keys in the file are the env var names; an env var with the same name wins (local smoke). Lookup is [`marty::Config`](../../marty/src/config.rs) (feature `config`).
 
-| Key (conf file) | Env override |
-|-----------------|--------------|
-| `host` | `MARTY_MYSQL_HOST` (default `localhost`) |
-| `user` | `MARTY_MYSQL_USER` |
-| `password` | `MARTY_MYSQL_PASSWORD` |
-| `database` | `MARTY_MYSQL_DATABASE` |
-| `port` | `MARTY_MYSQL_PORT` (default `3306`) |
+| Key (env var and file) | Default |
+|------------------------|---------|
+| `MARTY_MYSQL_HOST` | `localhost` |
+| `MARTY_MYSQL_USER` | required |
+| `MARTY_MYSQL_PASSWORD` | empty |
+| `MARTY_MYSQL_DATABASE` | required |
+| `MARTY_MYSQL_PORT` | `3306` |
 
 ```bash
-cp marty_mysql.conf.example marty_mysql.conf
-# edit user/password/database from KAS → MySQL
+cargo marty init prod --host … --user … --domain example.de --protocol ftps \
+  --docroot example.de --config _config/example.de/marty.conf   # also creates deploy/prod/marty.conf (600)
+# copy the keys from examples/07_mysql/marty.conf.example and fill in user/password/database from KAS → MySQL
+# (quote the password if it contains spaces or " #")
 ```
 
 In KAS: create a database + user, grant access. Host for same-server CGI is almost always `localhost`.
 
+The binary never reads a config from its own directory or the cwd: on the host both are `cgi-bin/` under the docroot, where a `.conf` may be downloadable. Where it does read is compiled in by `cargo marty` (next section).
+
 ## Build / upload
 
-```bash
-cargo zigbuild -p marty-07-mysql --release --target x86_64-unknown-linux-musl
-# or: cd examples/07_mysql && just linux
+With [`cargo marty`](../../tools/cargo-marty/), in `marty.deploy.toml` (gitignored):
+
+```toml
+[target.prod]
+preset = "generic"
+host = "…"
+user = "…"
+docroot = "example.de"                      # all-inkl: the domain's folder in the account
+config = "_config/example.de/marty.conf"    # outside the docroot; not a folder a domain points to
+                                            # local file: deploy/prod/marty.conf
+package = "marty-07-mysql"
+domain = "example.de"                       # check → https://example.de/mysql/
 ```
 
-Upload `marty-07-mysql` → `cgi-bin/` (`chmod 755`), `.htaccess` mount (`alias = mysql`), and `marty_mysql.conf` beside the binary (mode `600` if possible).
+```bash
+cargo marty deploy prod      # binary → example.de/cgi-bin (755), conf → _config/example.de (700/600), .htaccess merge
+cargo marty check prod
+```
+
+`cargo marty` compiles the path from `cgi_dir` to `config` into the binary (`../../_config/example.de/marty.conf`). A plain `cargo zigbuild` / `just linux` build has no compiled-in path and reads env vars only.
 
 ## Local smoke
 
-Needs a reachable MySQL/MariaDB and config/env:
+Needs a reachable MySQL/MariaDB and env vars, or `examples/07_mysql/marty.conf` (the justfile passes it via `MARTY_CONFIG`):
 
 ```bash
 export MARTY_MYSQL_USER=… MARTY_MYSQL_PASSWORD=… MARTY_MYSQL_DATABASE=…

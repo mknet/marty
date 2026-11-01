@@ -1,0 +1,5 @@
+# all-inkl (verified Nov 2026: FTPS as a domain-restricted FTP user, config outside the docroot readable by the CGI).
+protocol = "ftps"
+docroot = "htdocs"
+cgi_dir = "{docroot}/cgi-bin"
+notes = "In the KAS, point the (sub)domain to /<domain>/htdocs/ and create an FTP user restricted to /<domain>/, so paths are relative to that folder. Secrets: config = \"_config/marty.conf\" (next to htdocs, never inside it)."

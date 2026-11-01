@@ -19,6 +19,7 @@ members = [
     "benchmarks/complex/marty-sync",
     "benchmarks/complex/marty-axum",
     "tools/hosting-probe/probe-rs",
+    "tools/cargo-marty",
 ]
 # Cloud alternatives keep their own Cargo.lock / deps (Lambda, GCF, …).
 exclude = [
