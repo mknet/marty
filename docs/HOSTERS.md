@@ -1,6 +1,6 @@
 # EU shared hosters for Marty
 
-Which shared hosting plans can run a Marty binary as CGI. Prices incl. 19 % German VAT, **checked Oct 2026**; prices change, re-check the tariff pages. Cost comparison with cloud functions: [`COST.md`](COST.md). Product defaults: [`DIRECTION.md`](DIRECTION.md).
+Which shared hosting plans can run a Marty binary as CGI. Prices incl. 19 % German VAT, **checked Oct 2026**; prices change, re-check the tariff pages. Cost comparison with cloud functions: [`COST.md`](COST.md). Product defaults: [`DIRECTION.md`](DIRECTION.md). **Italian hosters** are in their own section, [Italy](#italy), **checked Nov 2026**; their net prices are converted the same way (net × 1.19, German VAT) so the columns compare.
 
 **Probe before claiming.** "CGI scripts" in marketing ≠ "arbitrary ELF" on every plan. Run [`tools/hosting-probe`](../tools/hosting-probe/) once on a plan before saying it works. **Verified (Oct 2026):** all-inkl, **Hetzner Webhosting S**, and **netcup EiWoMiSau**. Outside sync/axum/php: [`RESULTS-SNAPSHOTS.md` Run N](../benchmarks/complex/RESULTS-SNAPSHOTS.md#run-n--outside-compare-hetzner-s-vs-all-inkl-2026-10-28) (Hetzner vs all-inkl), [Run O](../benchmarks/complex/RESULTS-SNAPSHOTS.md#run-o--outside-netcup-eiwomisau-2026-10-29) (netcup).
 
@@ -29,7 +29,28 @@ Which shared hosting plans can run a Marty binary as CGI. Prices incl. 19 % Germ
 - **Latency vs clouds:** in the Oct 2026 complex outside compare, Hetzner S warm P50 tied Cloudflare Workers at the top; all-inkl landed near AWS. [`alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md).
 - **Strongest unverified candidate:** manitu M, because it documents CGI for your own programs.
 - **Uberspace** is a different and attractive model: a long-lived process instead of CGI. Marty is optional there.
-- **Sovereignty:** German hosters with servers in Germany (all-inkl states this for all plans; netcup, Hetzner, manitu are German) avoid the US CLOUD Act question. See [`COST.md`](COST.md#digital-sovereignty).
+- **Sovereignty:** German hosters with servers in Germany (all-inkl states this for all plans; netcup, Hetzner, manitu are German) avoid the US CLOUD Act question. Aruba, Serverplan and Tophost name data centres in Italy, so they are EU-hosted too, without a CLOUD Act link. See [`COST.md`](COST.md#digital-sovereignty).
+
+## Italy
+
+Italian shared hosters with CGI in their docs or plan pages, **checked Nov 2026**. **None is verified** with [`tools/hosting-probe`](../tools/hosting-probe/) yet, so every row stays **probe**. Prices: Italian net price × 1.19 (German VAT, as in the main table), per month; the **renewal price** is the headline, first-year promos are only noted.
+
+| Hoster / plan | Price / month | Term | SSH | CGI with own binary | Notes | [`cargo marty`](../tools/cargo-marty/) preset |
+|---|---|---|---|---|---|---|
+| **Aruba** Hosting Linux Basic / Easy / Advanced | ~3.47 / 5.95 / 7.93 € (41.64 / 71.39 / 95.19 €/yr; first year 9.90 / 9.90 / 19.90 € net) | 12 months | only Advanced | **documented:** official guide says Perl/Python/Ruby/shell **and executables (`.exe`, `.cgi`)** go in `cgi-bin/`, CHMOD 755; older KB: upload C CGIs "already compiled as a binary"; CGI test in the panel; **probe** | data centres in Italy; `.htaccess` with mod_rewrite/deflate/expires; PHP runs as CGI; renewal 34.99 / 59.99 / 79.99 € net/yr; best Italian candidate | `generic` after probe |
+| **Keliweb** KeliUser / KeliPRO / KeliCMS / KeliTOP | KeliPRO ~5.45 € on renewal (4.58 € net); promo ~3.26 / 2.73 / 4.11 / 12.39 € (2.74 / 2.29 / 3.45 / 10.41 € net) | 12 months billing | "Accesso SSH" listed, per plan unclear | **documented:** comparison table lists **CGI**, Perl per FAQ; **probe** | cPanel (KeliUser: DirectAdmin); renewal prices of the other plans not stated | `generic` after probe |
+| **Netsons** Shared Business / Pro Premium | Business ~11.89 € (9.99 € net); promo ~7.13 € (5.99 € net) | n/a | yes (SSH, SFTP, Git) | **documented:** plan pages list "Supporto CGI"; **probe** | cPanel, no root; ACN-qualified cloud; site returns 403 to bots, data from search results | `generic` after probe |
+| Serverplan Starterkit / Startup / Enterprise | ~2.58 / 7.54 / 14.08 € (26 / 76 / 142 € net/yr) | 12 months | from Startup | not stated (Perl/Python listed); **probe** | cPanel; own data centre in Italy (Cassino) | `generic` after probe |
+| Register.it Web Hosting | from ~6.32 € (5.31 € net) | n/a | not stated | not stated (Linux hosting "for PHP, Python, Perl, Ruby"); **probe** | own panel or cPanel/Plesk | `generic` after probe |
+| SupportHost Condiviso 1 / 2 / 3 / 4 | 38 / 65 / 99 / 164 €/yr as listed (VAT treatment unclear; if net: ~3.77 / 6.45 / 9.82 / 16.26 €) | 12 months | yes, all plans | not stated, but cPanel; **probe** | 14-day trial, enough for a probe run | `generic` after probe |
+| Tophost | from ~0.59 € (5.99 € net/yr) | 12 months | not stated | no CGI evidence; "FastCGI" only for PHP | cheap, but **no Marty candidate** | n/a |
+
+### Italy at a glance
+
+- **Aruba is the strongest unverified Italian candidate:** it explicitly documents your own executables in `cgi-bin/`, has a CGI test in the panel, and runs its data centres in Italy. SSH only from Advanced, so Basic/Easy deploy over FTP, which fits [`cargo marty deploy`](../tools/cargo-marty/) over FTP/FTPS.
+- **Next: Keliweb and Netsons**, which list CGI on their cPanel plans.
+- cPanel hosters usually ship a `cgi-bin/`; whether a static musl ELF actually runs there only the probe shows.
+- **Nothing in Italy is verified yet.** Watch renewal prices: Aruba's 9.90 € is first year only.
 
 ## Sources
 
@@ -41,3 +62,10 @@ Which shared hosting plans can run a Marty binary as CGI. Prices incl. 19 % Germ
 - Uberspace: <https://uberspace.de/en/product/>; web backends: <https://manual.uberspace.de/web-backends/>
 - webgo: <https://www.webgo.de/webhosting/>
 - Infomaniak CGI: <https://infomaniak.com/de/support/faq/1307/problem-mit-perl-oder-python-skript-losen>
+- Aruba plans: <https://hosting.aruba.it/en/web-hosting/>; CGI / `cgi-bin`: <https://guide.aruba.it/faq/hosting-e-domini/linguaggi-e-spazio-web-linux>; CGI test: <https://guide.aruba.it/hosting-e-domini/hosting/hosting-linux/pannello-controllo-linux/gestione-test-cgi-linux>
+- Keliweb: <https://www.keliweb.it/hosting>
+- Netsons: <https://www.netsons.com/hosting-cpanel>
+- Serverplan: <https://www.serverplan.com/hosting/>
+- Register.it: <https://www.register.it/hosting/>
+- SupportHost: <https://supporthost.com/it/hosting-condiviso/>
+- Tophost: <https://www.tophost.it/>
