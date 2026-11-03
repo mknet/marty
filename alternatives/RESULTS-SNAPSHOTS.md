@@ -48,3 +48,23 @@ Same client laptop. Latency in ms. All routes returned 40× HTTP 200 unless note
 - **AWS** (eu-west-1 Function URL, 128 MB) and **all-inkl** land in a similar warm band (~50–66 ms P50).
 - **Azure** warm P50 is competitive after warm-up; **cold primes ~768 ms** and a fat P95 on the first warm primes run show Consumption cold-start / scale noise.
 - Cloudflare **matrix succeeded** on this account (not free-CPU blocked in this run).
+
+## Run B — light-route grill clouds vs Hetzner (2026-11-03)
+
+Same client laptop as Run A / hosting Run N. Not the fair low-volume protocol — stress sketch only.
+
+**Load:** `hey -z 2m -c 100` on `primes/10000?salt=0` (light route so the client can push RPS; same path as Hetzner capacity sketch in [`../benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md) Run N).
+
+**Deploy:** AWS `eu-west-1` Function URL 128 MB / 30 s; Azure Linux Consumption `northeurope`; Scaleway `fr-par` `rust196` 256 MB; Cloudflare Workers edge. Sequential grills (one target at a time).
+
+| Target | req/s | P50 | ~200s | Errors |
+|--------|------:|----:|------:|--------|
+| Cloudflare | **1142** | 83 ms | 137k | 0 |
+| Azure | **1019** | 95 ms | 122k | 0 |
+| AWS | **972** | 101 ms | 117k | 0 |
+| Scaleway | **965** | 94 ms | 116k | 0 |
+| **Hetzner S** (Run N) | **~233** | ~430–435 ms | ~28k | 0 |
+
+**Takeaways:** under hard parallel load the clouds scale out (~4–5× Hetzner throughput from this laptop) and keep P50 under ~100 ms; Hetzner **queues** (~430 ms P50) but stays up with all 200s. That is the expected shared-host vs FaaS capacity shape — not a knock on Marty CGI latency at calm load (Run A). Do not treat C=100 grills as hosting marketing claims; clouds bill / quota this traffic.
+
+Raw `hey` logs (local, not in git): `alternatives/grill-results/grill-20261103-035147/`.

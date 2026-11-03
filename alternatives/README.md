@@ -107,6 +107,10 @@ Same client laptop; identical primes/fib/matrix JSON. Warm **P50** (ms):
 
 **Hetzner Webhosting S** and **Cloudflare Workers** are the top tier end-to-end; Azure/Scaleway mid; all-inkl and AWS Lambda (eu-west-1, 128 MB Function URL) in a slower band. This is front-door/RTT-dominated, not a claim that CGI compute beats every cloud CPU. Azure Consumption cold primes ~768 ms. Full numbers + cold column: [Run A](RESULTS-SNAPSHOTS.md#run-a--outside-compare-clouds--hosting-2026-10-28).
 
+### Capacity grill (Run B, 2026-11-03)
+
+Same light route as the Hetzner sketch (`primes/10000`, `hey -z 2m -c 100`). Clouds ~**965–1142** req/s (P50 ~83–101 ms, all 200); Hetzner ~**233** req/s (P50 ~430 ms, queues, stays up). Scale-out is the cloud story; calm warm latency is where hosting ties the top tier. [Run B](RESULTS-SNAPSHOTS.md#run-b--light-route-grill-clouds-vs-hetzner-2026-11-03).
+
 ## Not in this tree (yet)
 
 | Option | Why it might appear later |
