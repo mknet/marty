@@ -20,10 +20,10 @@ alias = "hello"       # pretty URL: /hello/…
 path_info = true      # /hello/world → PATH_INFO /world
 
 [dependencies]
-marty = { version = "0.2", default-features = false, features = ["sync-cgi"] }
+marty = { version = "0.3", default-features = false, features = ["sync-cgi"] }
 
 [build-dependencies]
-marty = { version = "0.2", default-features = false, features = ["htaccess"] }
+marty = { version = "0.3", default-features = false, features = ["htaccess"] }
 ```
 
 ```rust

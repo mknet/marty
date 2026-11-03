@@ -13,6 +13,6 @@ include = ["src/**", "presets/**", "probe/**", "Cargo.toml", "README.md", "CHANG
 
 [dependencies]
 cargo_metadata = "0.23"
-marty = { version = "0.2.1", path = "../../marty", default-features = false, features = ["htaccess"] }
+marty = { version = "0.3.0", path = "../../marty", default-features = false, features = ["htaccess"] }
 serde = { version = "1", features = ["derive"] }
 toml = "1"
