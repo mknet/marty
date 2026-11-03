@@ -16,7 +16,7 @@ async fn main() {
 
     let app = Router::new()
         .route(
-            "/cgi-bin/sample-cgi-server/",
+            "/",
             get(|cookies: Cookies, session: Session| async move {
                 cookies.add(Cookie::new("hello_world", "hello_world"));
                 session.clear().await;
@@ -54,10 +54,7 @@ async fn main() {
                 one
             }),
         )
-        .route(
-            "/cgi-bin/sample-cgi-server/with/path-info",
-            get(|| async { "Hello, PATH_INFO" }),
-        )
+        .route("/with/path-info", get(|| async { "Hello, PATH_INFO" }))
         .layer(session_layer);
 
     if let Err(e) = serve_cgi(app).await {

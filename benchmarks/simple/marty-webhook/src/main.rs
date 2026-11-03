@@ -7,7 +7,7 @@ use axum::extract::Request;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use marty::{multi_mount_cgi_router_from_env, serve_cgi};
+use marty::serve_cgi;
 use serde::{Deserialize, Serialize};
 
 const WEBHOOK_SECRET: &str = "bench-secret";
@@ -65,9 +65,7 @@ async fn receive_webhook(request: Request) -> Response {
 
 #[tokio::main]
 async fn main() {
-    let inner = Router::new().route("/", post(receive_webhook));
-
-    let app = multi_mount_cgi_router_from_env(inner, &[]);
+    let app = Router::new().route("/", post(receive_webhook));
 
     if let Err(e) = serve_cgi(app).await {
         eprintln!("Error while serving CGI request: {e}");

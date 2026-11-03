@@ -8,5 +8,5 @@ description = "Marty example 06_axum: optional Axum Router + serve_cgi for exist
 
 [dependencies]
 axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
+marty = { path = "../../marty", features = ["axum"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

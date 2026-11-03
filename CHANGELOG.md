@@ -6,6 +6,35 @@ versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`serve_cgi` routes relative to `SCRIPT_NAME`.** The service now sees
+  `/hello/Doc` instead of `/cgi-bin/app/hello/Doc` (`/` for the script root),
+  for direct calls and `.htaccess` aliases alike, so an existing axum `Router`
+  works unchanged. The query and the raw, percent-encoded path are kept. The
+  full public URI is in the request extensions as `axum::extract::OriginalUri`.
+  `CGIRequest::uri()` and `Request::try_from(CGIRequest)` still return the full URI.
+  **Migration:** drop `multi_mount_cgi_router*` and pass the inner router to
+  `serve_cgi`, or remove the `/cgi-bin/<binary>` prefix from your routes.
+  Keeping the mount helper prefixes the routes twice and nothing matches.
+
+### Changed
+
+- **Feature `tower` is now `axum`.** Enable `features = ["axum"]` to run an
+  existing axum `Router` with `serve_cgi`; it still accepts any tower `Service`.
+  `tower` stays as an alias for `axum`, so 0.2 manifests keep building.
+
+### Deprecated
+
+- `multi_mount_cgi_router`, `multi_mount_cgi_router_with_prefix`,
+  `multi_mount_cgi_router_from_env`, `multi_mount_cgi_router_try_from_env`,
+  `cgi_mount_parts_from_script_name`, `try_cgi_mount_parts_from_env`: no longer
+  needed now that `serve_cgi` routes relative to the script.
+
+### Fixed
+
+- `serve_cgi` wrote the reason phrase twice (`Status: 200 OK OK`).
+
 ## [0.2.1] — 2026-11-01
 
 ### Added
