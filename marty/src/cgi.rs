@@ -271,11 +271,8 @@ pub fn relative_path<'a>(req: &'a CgiRequest) -> Cow<'a, str> {
     }
     if !req.script_name.is_empty() {
         let path = req.uri.split('?').next().unwrap_or(&req.uri);
-        if let Some(rest) = path.strip_prefix(&req.script_name) {
-            if rest.is_empty() || rest == "/" {
-                return Cow::Borrowed("/");
-            }
-            return Cow::Borrowed(rest);
+        if let Some(rest) = strip_script_name(path, &req.script_name) {
+            return rest;
         }
     }
     let path = req.uri.split('?').next().unwrap_or(&req.uri);
@@ -283,6 +280,23 @@ pub fn relative_path<'a>(req: &'a CgiRequest) -> Cow<'a, str> {
         Cow::Borrowed("/")
     } else {
         Cow::Borrowed(path)
+    }
+}
+
+/// Strip `script_name` from the start of `uri` (path, optionally with `?query`), keeping the query.
+///
+/// An empty remainder becomes `/`. Returns [`None`] if `uri` does not start with `script_name`
+/// at a path segment boundary (so `/cgi-bin/app2` is not stripped by `/cgi-bin/app`).
+pub(crate) fn strip_script_name<'a>(uri: &'a str, script_name: &str) -> Option<Cow<'a, str>> {
+    let rest = uri.strip_prefix(script_name.trim_end_matches('/'))?;
+    if rest.is_empty() {
+        Some(Cow::Borrowed("/"))
+    } else if rest.starts_with('?') {
+        Some(Cow::Owned(format!("/{rest}")))
+    } else if rest.starts_with('/') {
+        Some(Cow::Borrowed(rest))
+    } else {
+        None
     }
 }
 
@@ -329,6 +343,45 @@ impl<const N: usize> IntoResponse for (u16, [(&'static str, &'static str); N], &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_script_name_direct_call() {
+        assert_eq!(
+            strip_script_name("/cgi-bin/app/hello/x", "/cgi-bin/app").as_deref(),
+            Some("/hello/x")
+        );
+    }
+
+    #[test]
+    fn strip_script_name_root() {
+        assert_eq!(
+            strip_script_name("/cgi-bin/app", "/cgi-bin/app").as_deref(),
+            Some("/")
+        );
+        assert_eq!(
+            strip_script_name("/cgi-bin/app/", "/cgi-bin/app").as_deref(),
+            Some("/")
+        );
+        assert_eq!(
+            strip_script_name("/cgi-bin/app?a=1", "/cgi-bin/app").as_deref(),
+            Some("/?a=1")
+        );
+    }
+
+    #[test]
+    fn strip_script_name_keeps_query_and_encoding() {
+        assert_eq!(
+            strip_script_name("/cgi-bin/app/hello/J%C3%BCrg%20X?a=1&b=2", "/cgi-bin/app")
+                .as_deref(),
+            Some("/hello/J%C3%BCrg%20X?a=1&b=2")
+        );
+    }
+
+    #[test]
+    fn strip_script_name_segment_boundary() {
+        assert_eq!(strip_script_name("/cgi-bin/app2/x", "/cgi-bin/app"), None);
+        assert_eq!(strip_script_name("/routing/hello/x", "/cgi-bin/app"), None);
+    }
 
     struct CountingWrite {
         writes: usize,

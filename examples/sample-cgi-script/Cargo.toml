@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 axum = "0.8"
-marty = { path = "../../marty", features = ["tower"] }
+marty = { path = "../../marty", features = ["axum"] }
 tokio = { version = "1", features = ["full"] }
 tower-sessions = "0.15"
 tower-cookies = "0.11"

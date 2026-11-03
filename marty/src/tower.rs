@@ -1,15 +1,21 @@
 //! Run any [`tower::Service`] (for example an [`axum::Router`](https://docs.rs/axum/latest/axum/struct.Router.html))
 //! as a CGI script: parse the request from the process environment, call the service, write the CGI response.
 //!
-//! Enable with **`marty`’s `tower` feature** in `Cargo.toml` (this also enables **`axum`** for [`multi_mount_cgi_router`]):
+//! Enable with **`marty`’s `axum` feature** in `Cargo.toml` (`tower` is a 0.2 compatibility alias):
 //! ```toml
-//! marty = { version = "…", features = ["tower"] }
+//! marty = { version = "…", features = ["axum"] }
 //! ```
-//! Then use [`serve_cgi`] (or [`serve_cgi_with_output`]) together with your Axum `Router` or other `Service`.
+//! Then pass your existing Axum `Router` (or other `Service`) unchanged to [`serve_cgi`]
+//! (or [`serve_cgi_with_output`]). Routes are matched relative to the CGI script, exactly as on a
+//! regular axum server: `/cgi-bin/app/hello/Doc` and an `.htaccess` alias both reach `/hello/{name}`.
+//! The full public URI is available to handlers as [`axum::extract::OriginalUri`].
 
+use crate::cgi::strip_script_name;
 use crate::{CGIError, CGIRequest, CGIResponse, MetaVariableKind};
 use axum::Router;
+use axum::extract::OriginalUri;
 use http_body_util::{BodyExt, Full};
+use hyper::Uri;
 use hyper::body::{Body, Bytes};
 use hyper::{Request, Response};
 use snafu::ResultExt;
@@ -20,7 +26,9 @@ use tower::{Service, ServiceExt};
 
 /// Serve a CGI application.
 ///
-/// Responses are emitted to stdout per RFC 3875.
+/// The service sees the request path relative to `SCRIPT_NAME` (`/` for the script root), so
+/// routes are written as on a regular server. The full public URI is in the request extensions as
+/// [`OriginalUri`]. Responses are buffered and emitted to stdout per RFC 3875.
 pub async fn serve_cgi<S, B>(app: S) -> Result<()>
 where
     S: Service<Request<Full<Bytes>>, Response = Response<B>, Error = Infallible>
@@ -43,9 +51,20 @@ where
     B: Body,
     <B as Body>::Error: Debug,
 {
-    let request = CGIRequest::<Full<Bytes>>::from_env()
+    let mut request = CGIRequest::<Full<Bytes>>::from_env()
         .and_then(Request::try_from)
         .context(error::CGIRequestParseSnafu)?;
+    let script_name = MetaVariableKind::ScriptName
+        .try_from_env()
+        .context(error::CGIRequestParseSnafu)?;
+    let script_name = script_name.as_str().context(error::CGIRequestParseSnafu)?;
+
+    let original = request.uri().clone();
+    let full = original.path_and_query().map_or("/", |pq| pq.as_str());
+    if let Some(relative) = strip_script_name(full, script_name) {
+        *request.uri_mut() = relative.parse::<Uri>().context(error::RelativeUriSnafu)?;
+    }
+    request.extensions_mut().insert(OriginalUri(original));
 
     let response = app
         .oneshot(request)
@@ -53,7 +72,7 @@ where
         .expect("The Error type is Infallible, this should never fail.");
 
     let headers = response.headers().clone();
-    let status = response.status().to_string();
+    let status = response.status().as_str().to_string();
     let reason = response.status().canonical_reason().map(|s| s.to_string());
 
     let collected = response.into_body().collect().await;
@@ -111,6 +130,14 @@ fn nest_router_at_script_and_aliases(inner: Router, script_path: &str, aliases: 
 /// Routes on `inner` must be **relative to the mount**: `/`, `/hello/{name}`, …
 ///
 /// For a non-default CGI directory (not `/cgi-bin`), use [`multi_mount_cgi_router_with_prefix`].
+///
+/// **Deprecated:** [`serve_cgi`] already routes relative to the script. Combined with it, this
+/// helper prefixes the routes twice and nothing matches; pass the inner router to `serve_cgi` directly.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
+#[allow(deprecated)]
 pub fn multi_mount_cgi_router(inner: Router, binary_name: &str, aliases: &[&str]) -> Router {
     multi_mount_cgi_router_with_prefix(inner, binary_name, "/cgi-bin", aliases)
 }
@@ -118,6 +145,13 @@ pub fn multi_mount_cgi_router(inner: Router, binary_name: &str, aliases: &[&str]
 /// Like [`multi_mount_cgi_router`], but `cgi_prefix` replaces the default `/cgi-bin` segment (no trailing slash).
 ///
 /// The script URL becomes `{cgi_prefix}/{binary_name}`, e.g. `cgi_prefix = "/app/cgi"` and `binary_name = "demo"` → `/app/cgi/demo`.
+///
+/// **Deprecated:** [`serve_cgi`] already routes relative to the script. Combined with it, this
+/// helper prefixes the routes twice and nothing matches; pass the inner router to `serve_cgi` directly.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
 pub fn multi_mount_cgi_router_with_prefix(
     inner: Router,
     binary_name: &str,
@@ -133,6 +167,13 @@ pub fn multi_mount_cgi_router_with_prefix(
 ///
 /// Examples: `/cgi-bin/app` → `("/cgi-bin", "app")`; `app` → `("/cgi-bin", "app")`; `/app` → `("/cgi-bin", "app")`.
 /// Returns [`None`] if the path is empty or ends with `/` with no script segment.
+///
+/// **Deprecated:** only needed by the deprecated mount helpers; [`serve_cgi`] already routes
+/// relative to the script.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
 pub fn cgi_mount_parts_from_script_name(script_name: &str) -> Option<(String, String)> {
     let t = script_name.trim();
     if t.is_empty() {
@@ -182,6 +223,14 @@ impl Display for CgiMountFromEnvError {
 impl std::error::Error for CgiMountFromEnvError {}
 
 /// Reads `SCRIPT_NAME` from the environment and parses it with [`cgi_mount_parts_from_script_name`].
+///
+/// **Deprecated:** only needed by the deprecated mount helpers; [`serve_cgi`] already routes
+/// relative to the script.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
+#[allow(deprecated)]
 pub fn try_cgi_mount_parts_from_env() -> std::result::Result<(String, String), CgiMountFromEnvError>
 {
     let mv = MetaVariableKind::ScriptName
@@ -208,6 +257,14 @@ fn binary_name_from_argv0() -> Option<String> {
 /// If that fails (e.g. local run without CGI vars), falls back to **`argv[0]`’s file name** and the
 /// default `/cgi-bin` prefix — which may differ from production; use an explicit
 /// [`multi_mount_cgi_router`] when you need a guaranteed match.
+///
+/// **Deprecated:** [`serve_cgi`] already routes relative to the script. Combined with it, this
+/// helper prefixes the routes twice and nothing matches; pass the inner router to `serve_cgi` directly.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
+#[allow(deprecated)]
 pub fn multi_mount_cgi_router_from_env(inner: Router, aliases: &[&str]) -> Router {
     match try_cgi_mount_parts_from_env() {
         Ok((prefix, name)) => multi_mount_cgi_router_with_prefix(inner, &name, &prefix, aliases),
@@ -219,6 +276,14 @@ pub fn multi_mount_cgi_router_from_env(inner: Router, aliases: &[&str]) -> Route
 }
 
 /// Strict variant: requires a usable **`SCRIPT_NAME`** (no `argv[0]` fallback).
+///
+/// **Deprecated:** [`serve_cgi`] already routes relative to the script. Combined with it, this
+/// helper prefixes the routes twice and nothing matches; pass the inner router to `serve_cgi` directly.
+#[deprecated(
+    since = "0.3.0",
+    note = "serve_cgi routes relative to the script; mount routes at /"
+)]
+#[allow(deprecated)]
 pub fn multi_mount_cgi_router_try_from_env(
     inner: Router,
     aliases: &[&str],
@@ -230,6 +295,7 @@ pub fn multi_mount_cgi_router_try_from_env(
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod cgi_mount_tests {
     use super::cgi_mount_parts_from_script_name;
 
@@ -280,6 +346,122 @@ mod cgi_mount_tests {
     }
 }
 
+#[cfg(test)]
+mod serve_cgi_tests {
+    use super::serve_cgi_with_output;
+    use axum::Router;
+    use axum::extract::{OriginalUri, Path, RawQuery};
+    use axum::routing::get;
+    use tokio::sync::Mutex;
+
+    /// `serve_cgi` reads the process environment; tests that set it must not overlap.
+    static ENV_LOCK: Mutex<()> = Mutex::const_new(());
+
+    fn app() -> Router {
+        Router::new()
+            .route("/", get(|| async { "root" }))
+            .route(
+                "/hello/{name}",
+                get(
+                    |Path(name): Path<String>, RawQuery(q): RawQuery| async move {
+                        format!("hello {name} q={}", q.unwrap_or_default())
+                    },
+                ),
+            )
+            .route(
+                "/original/{*rest}",
+                get(|OriginalUri(uri): OriginalUri| async move { uri.to_string() }),
+            )
+    }
+
+    /// Run `app()` under the given CGI env (all other routing vars removed) and return the output.
+    async fn serve(vars: &[(&str, &str)]) -> String {
+        let _guard = ENV_LOCK.lock().await;
+        // SAFETY: env access is serialized by ENV_LOCK within this test module.
+        unsafe {
+            for key in [
+                "REQUEST_METHOD",
+                "SCRIPT_NAME",
+                "PATH_INFO",
+                "QUERY_STRING",
+                "REQUEST_URI",
+                "CONTENT_LENGTH",
+            ] {
+                std::env::remove_var(key);
+            }
+            std::env::set_var("REQUEST_METHOD", "GET");
+            for (k, v) in vars {
+                std::env::set_var(k, v);
+            }
+        }
+        let mut out = Vec::new();
+        serve_cgi_with_output(&mut out, app()).await.unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    #[tokio::test]
+    async fn routes_relative_to_script_name() {
+        let out = serve(&[
+            ("SCRIPT_NAME", "/cgi-bin/app"),
+            ("PATH_INFO", "/hello/Doc"),
+            ("QUERY_STRING", "a=1"),
+        ])
+        .await;
+        assert!(out.starts_with("Status: 200 OK\n"), "{out}");
+        assert!(out.ends_with("hello Doc q=a=1"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn direct_call_keeps_raw_request_uri() {
+        let out = serve(&[
+            ("SCRIPT_NAME", "/cgi-bin/app"),
+            ("PATH_INFO", "/hello/J\u{fc}rg"),
+            ("REQUEST_URI", "/cgi-bin/app/hello/J%C3%BCrg?a=1"),
+            ("QUERY_STRING", "a=1"),
+        ])
+        .await;
+        assert!(out.ends_with("hello Jürg q=a=1"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn alias_call_routes_via_path_info() {
+        let out = serve(&[
+            ("SCRIPT_NAME", "/cgi-bin/app"),
+            ("PATH_INFO", "/hello/x"),
+            ("REQUEST_URI", "/routing/hello/x"),
+        ])
+        .await;
+        assert!(out.ends_with("hello x q="), "{out}");
+    }
+
+    #[tokio::test]
+    async fn script_root_is_slash() {
+        let direct = serve(&[("SCRIPT_NAME", "/cgi-bin/app")]).await;
+        assert!(direct.ends_with("root"), "{direct}");
+
+        let alias = serve(&[
+            ("SCRIPT_NAME", "/cgi-bin/app"),
+            ("REQUEST_URI", "/routing/"),
+        ])
+        .await;
+        assert!(alias.ends_with("root"), "{alias}");
+    }
+
+    #[tokio::test]
+    async fn original_uri_is_public_uri() {
+        let out = serve(&[
+            ("SCRIPT_NAME", "/cgi-bin/app"),
+            ("PATH_INFO", "/original/hello/Doc"),
+            ("QUERY_STRING", "a=1"),
+        ])
+        .await;
+        assert!(
+            out.ends_with("/cgi-bin/app/original/hello/Doc?a=1"),
+            "{out}"
+        );
+    }
+}
+
 mod error {
     use super::CGIError;
     use snafu::Snafu;
@@ -289,6 +471,11 @@ mod error {
     pub enum CgiServiceError {
         #[snafu(display("Failed to parse CGI HTTP request: {}", source))]
         CGIRequestParse { source: CGIError },
+
+        #[snafu(display("Failed to build the script-relative request URI: {}", source))]
+        RelativeUri {
+            source: hyper::http::uri::InvalidUri,
+        },
 
         #[snafu(display("Failed to convert HTTP response into CGI response: {}", source))]
         CGIResponseParse { source: CGIError },

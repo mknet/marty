@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 axum = "0.8"
-marty = { path = "../../../marty", features = ["tower"] }
+marty = { path = "../../../marty", features = ["axum"] }
 marty-bench-shared = { path = "../shared" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

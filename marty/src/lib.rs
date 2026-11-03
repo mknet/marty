@@ -17,8 +17,8 @@
 //! Enable **`htaccess`** to generate Apache rewrite mounts (pretty URL → `cgi-bin` binary) from `build.rs`.
 //! Enable feature **`sync-cgi`** (without `hyper-cgi`) for a smaller sync-only build without hyper.
 //!
-//! ## Tower / Axum (optional)
-//! Enable Cargo feature **`tower`** for `serve_cgi` / `serve_cgi_with_output`, the `marty::tower` module, and **`multi_mount_cgi_router`**: any [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) over `hyper`—including an Axum [`Router`](https://docs.rs/axum/latest/axum/struct.Router.html)—can run as a CGI binary with full routing.
+//! ## Axum (optional)
+//! Enable Cargo feature **`axum`** for `serve_cgi` / `serve_cgi_with_output` and the `marty::tower` module: any [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html) over `hyper`—including an existing Axum [`Router`](https://docs.rs/axum/latest/axum/struct.Router.html)—runs as a CGI binary unchanged. Routes are matched relative to the script, exactly as on a regular axum server.
 //!
 //! ## Examples
 //! ### Parsing an HTTP Request
@@ -91,11 +91,12 @@ pub use config::{Config, ConfigError};
 #[cfg(feature = "session")]
 pub use session::{Session, SessionStore};
 
-#[cfg(feature = "tower")]
-#[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
+#[cfg(feature = "axum")]
+#[cfg_attr(docsrs, doc(cfg(feature = "axum")))]
 pub mod tower;
 
-#[cfg(feature = "tower")]
+#[cfg(feature = "axum")]
+#[allow(deprecated)]
 pub use tower::{
     CgiMountFromEnvError, CgiServiceError, cgi_mount_parts_from_script_name,
     multi_mount_cgi_router, multi_mount_cgi_router_from_env, multi_mount_cgi_router_try_from_env,

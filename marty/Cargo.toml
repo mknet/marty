@@ -8,7 +8,7 @@ documentation = "https://docs.rs/marty"
 repository = "https://github.com/mknet/marty"
 readme = "../README.md"
 license = "Apache-2.0"
-keywords = ["cgi", "hyper", "tower", "http", "gateway"]
+keywords = ["cgi", "axum", "hyper", "http", "gateway"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [features]
@@ -23,9 +23,12 @@ config = []
 # Apache `.htaccess` mount generator (`marty::htaccess`) — no extra deps; for consumer `build.rs`.
 # Reads `[package.metadata.marty]` (alias) + package name (binary).
 htaccess = []
-# Hyper-based CGIRequest/CGIResponse and optional Tower integration.
+# Hyper-based CGIRequest/CGIResponse (low-level API, used by `axum`).
 hyper-cgi = ["dep:hyper", "dep:bytes", "dep:http-body-util"]
-tower = ["hyper-cgi", "dep:tower", "dep:axum"]
+# Run an existing axum `Router` (or any tower `Service`) as CGI via `serve_cgi`.
+axum = ["hyper-cgi", "dep:tower", "dep:axum"]
+# Compatibility alias for marty 0.2; use `axum`.
+tower = ["axum"]
 
 [dependencies]
 http-body-util = { version = "0.1", optional = true }
@@ -36,6 +39,9 @@ tower = { version = "0.5", default-features = false, features = ["util"], option
 axum = { version = "0.8", optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "sync"] }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -2,7 +2,7 @@
 
 Rust **CGI** for shared hosting: one static binary, upload to `cgi-bin/`, no VPS. Primary path for request/response HTTP — on Hetzner S, warm latency sits with Cloudflare Workers in the Oct 2026 outside compare. Detail: [`docs/DIRECTION.md`](docs/DIRECTION.md#why-ship-on-marty).
 
-CGI runs **one process per request**—simple isolation, gone when the work is done. Prefer **`sync-cgi`** + `marty::Router` (smallest binary). Axum/`tower` is optional if you already have handlers.
+CGI runs **one process per request**—simple isolation, gone when the work is done. Prefer **`sync-cgi`** + `marty::Router` (smallest binary). The `axum` feature is optional if you already have axum handlers.
 
 Talk: [Back to the future: building “Cloud Functions Lite” with Rust and CGI](https://rustlab.it/talks/back-to-the-future-building-cloud-functions-lite-with-rust-and-cgi) — RustLab 2026 (Bologna).
 
@@ -77,18 +77,25 @@ Targets (`prod`, `stage`, …) live in `marty.deploy.toml` (no passwords; keep i
 
 ## Optional: Axum
 
-Reuse existing Axum apps as CGI (`tower` feature). Larger binary; on shared hosting latency is usually TLS/RTT-bound either way.
+Reuse existing axum handlers: enable the `axum` feature (`marty = { version = "0.3", features = ["axum"] }`), make `main` `#[tokio::main]`, call `serve_cgi(router)`. Routes stay as they are: `/hello/{name}` answers `/cgi-bin/app/hello/Doc` and the `.htaccess` alias alike. The full public URI is available as `axum::extract::OriginalUri`.
 
 ```rust
-use axum::{routing::get, Router};
+use axum::{extract::Path, routing::get, Router};
 use marty::serve_cgi;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", get(|| async { "Hello, World!" }));
+    let app = Router::new()
+        .route("/", get(|| async { "Hello, World!" }))
+        .route("/hello/{name}", get(|Path(name): Path<String>| async move { format!("Hello, {name}!") }));
     serve_cgi(app).await.unwrap();
 }
 ```
+
+Limits:
+- One process per request: `State`, in-memory caches and `MemoryStore` sessions do not survive between requests.
+- Responses are buffered: no SSE, no WebSockets.
+- axum 0.8. Larger binary than `sync-cgi`; on shared hosting latency is usually TLS/RTT-bound either way.
 
 ## Features
 
@@ -99,7 +106,7 @@ async fn main() {
 | **`session`** | HMAC-signed cookie sessions for process-per-request CGI (enables `config`) |
 | **`config`** | `marty::Config`: env vars first, then one config file outside the docroot (suexec drops `SetEnv`) |
 | **`hyper-cgi`** | Default: CGI ↔ `hyper` types |
-| **`tower`** | `serve_cgi` for Axum / Tower services |
+| **`axum`** | `serve_cgi` for an existing axum `Router` (or any tower `Service`); `tower` is a 0.2 alias |
 
 **Windows** is not supported (Unix CGI environment).
 

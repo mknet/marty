@@ -5,7 +5,7 @@ use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::get;
-use marty::{multi_mount_cgi_router_from_env, serve_cgi};
+use marty::serve_cgi;
 use marty_bench_shared::compute::{fibonacci_work, matrix_checksum, prime_count};
 use marty_bench_shared::json::{write_compute_matrix, write_compute_u64};
 use marty_bench_shared::salt::{effective_matrix_size, effective_prime_limit, request_salt};
@@ -73,7 +73,7 @@ async fn matrix(Path(size): Path<String>, Query(q): Query<SaltQuery>) -> impl In
 
 #[tokio::main]
 async fn main() {
-    let inner = Router::new()
+    let app = Router::new()
         .route("/primes/{limit}", get(primes))
         .route("/fibonacci/{n}", get(fibonacci))
         .route("/matrix/{size}", get(matrix))
@@ -83,8 +83,6 @@ async fn main() {
                 "routes: /primes/{limit}, /fibonacci/{n}, /matrix/{size} (?salt= optional)\n",
             )
         });
-
-    let app = multi_mount_cgi_router_from_env(inner, &[]);
 
     if let Err(e) = serve_cgi(app).await {
         eprintln!("Error while serving CGI request: {e}");

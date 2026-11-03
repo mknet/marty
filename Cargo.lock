@@ -977,6 +977,7 @@ dependencies = [
  "hyper",
  "sha2",
  "snafu",
+ "tokio",
  "tower",
 ]
 

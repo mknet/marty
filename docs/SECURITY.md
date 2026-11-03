@@ -57,7 +57,7 @@ Feature **`session`**: [`SessionStore`](../marty/src/session.rs) puts a percent-
 
 Uberspace web backends, a VPS, or Axum listening on a port are a different shape: one process serves many requests, memory persists, and you own the socket. [`HOSTERS.md`](HOSTERS.md) calls Uberspace out for that reason. Marty is optional there; the CGI notes above do not describe that process.
 
-`serve_cgi` (feature **`tower`**) is still one CGI process per request. It does not become a long-lived server.
+`serve_cgi` (feature **`axum`**) is still one CGI process per request. It does not become a long-lived server.
 
 ### 5. Cloud function twins
 
