@@ -6,6 +6,10 @@ versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking
 
 ## [Unreleased]
 
+### Changed
+
+- Depends on marty 0.3 (no behavior change for `htaccess`).
+
 ## [0.1.1] — 2026-11-01
 
 ### Added

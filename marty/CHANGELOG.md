@@ -6,6 +6,8 @@ versions follow [SemVer](https://semver.org/) (`0.y.z`: `y` may include breaking
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-11-03
+
 ### Changed (breaking)
 
 - **`serve_cgi` routes relative to `SCRIPT_NAME`.** The service now sees
