@@ -23,7 +23,7 @@ This page is the **single source of truth** for cost numbers in this repo. Per-p
 
 **Rough monthly cost:** the plan price, whether you get 10 k or a few million light hits, until fair-use or CPU limits kick in. Scaling "up" means a bigger plan or a VPS, not a line item per million invocations. **The plan price is also the ceiling.**
 
-**Latency (not cost):** on the shared complex outside bench (Oct 2026), **Hetzner S** matched **Cloudflare Workers** for warm P50 and beat AWS / Azure / Scaleway / all-inkl from the same client — end-to-end, same algorithms. **netcup EiWoMiSau** outside ~72 ms sync P50 (~2× Hetzner); fine under steady 320/min, fragile under hard parallel grill (IP ban). See [`../alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md) and [`../benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md) Run O.
+**Latency (not cost):** on the shared complex outside bench (Oct 2026), **Hetzner S** matched **Cloudflare Workers** for warm P50 and beat AWS / Azure / Scaleway / all-inkl from the same client — end-to-end, same algorithms. **netcup EiWoMiSau** outside ~72 ms sync P50 (~2× Hetzner); fine under steady 320/min, fragile under hard parallel grill (IP ban). Hard **C=100** capacity is the other axis: clouds scale to ~1k req/s on the light route while Hetzner queues at ~233 req/s (Nov 2026 grill). See [`../alternatives/RESULTS-SNAPSHOTS.md`](../alternatives/RESULTS-SNAPSHOTS.md) (Run A latency, Run B grill) and [`../benchmarks/complex/RESULTS-SNAPSHOTS.md`](../benchmarks/complex/RESULTS-SNAPSHOTS.md) Run O.
 
 ## Setup B: cloud functions
 

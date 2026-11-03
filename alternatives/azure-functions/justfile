@@ -58,7 +58,9 @@ build example=example:
       echo "hint: cargo-zigbuild recommended (brew/cargo install); falling back to cargo build"
       cargo build --release --target x86_64-unknown-linux-musl
     fi
-    cp -f target/x86_64-unknown-linux-musl/release/handler "$ROOT/handler"
+    # Honour CARGO_TARGET_DIR (sandboxes often redirect it away from ./target).
+    TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+    cp -f "$TARGET_DIR/x86_64-unknown-linux-musl/release/handler" "$ROOT/handler"
     chmod +x "$ROOT/handler"
     file "$ROOT/handler"
 
