@@ -8,8 +8,9 @@ default:
 setup:
     cargo install hurl --locked
 
-# Same checks as CI: tests, formatting, clippy (warnings are errors).
+# Same checks as CI: changelog copies (crates.io ships marty/CHANGELOG.md), tests, formatting, clippy (warnings are errors).
 check:
+    cmp CHANGELOG.md marty/CHANGELOG.md
     cargo test --workspace --all-features
     cargo fmt --all -- --check
     cargo clippy --workspace --all-features --all-targets -- -D warnings

@@ -24,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+      - name: Changelog copies match
+        run: cmp CHANGELOG.md marty/CHANGELOG.md
       - name: Build
         run: cargo build --workspace --all-features --verbose
       - name: Run tests
