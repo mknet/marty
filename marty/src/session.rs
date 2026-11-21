@@ -19,7 +19,7 @@ use crate::cgi::{CgiRequest, CgiResponse};
 use crate::config::{Config, ConfigError};
 use crate::cookie::{Cookie, SameSite};
 use crate::form::parse_urlencoded;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::fmt::Write as _;
